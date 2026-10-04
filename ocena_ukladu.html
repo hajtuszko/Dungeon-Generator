@@ -109,6 +109,8 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
 .thumb.cur { border-color: var(--accent); }
 .thumb canvas { width: 100%; height: auto; display: block; border-radius: 3px; }
 .thumb span { font: 12px var(--f-mono); color: var(--muted); }
+.cmp { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.cmp .thumb b { font: 600 13px var(--f-body); color: var(--ink); }
 .empty { font-size: 13.5px; color: var(--muted); }
 .how { columns: 2 320px; column-gap: 28px; font-size: 14px; color: var(--muted); }
 .how p { margin: 0 0 10px; break-inside: avoid; }
@@ -121,7 +123,7 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
   <header>
     <div class="eyebrow">Generator wnętrz · Recursive Backtracker + ocena grywalności</div>
     <h1>Ocena układu wnętrz</h1>
-    <p class="lede">Każdy układ powstaje w 7 etapach: pokoje 3×3, 3×4 i 4×2, korytarze z Recursive Backtrackera na komórkach nieparzystych, drzwi, przerzedzenie, usuwanie zaułków, pętle i poszerzenia. Potem drugi algorytm mierzy 11 cech ważnych dla poruszania się gracza i porównuje układ z już zaakceptowanymi. Wyszukiwarka przegląda kolejne ziarna i bierze najlepszy układ, który przejdzie oba progi.</p>
+    <p class="lede">Każdy układ powstaje w 7 etapach: pokoje 3×3, 3×4 i 4×2, korytarze z wybranego algorytmu labiryntu na komórkach nieparzystych (domyślnie Recursive Backtracker), drzwi, przerzedzenie, usuwanie zaułków, pętle i poszerzenia. Potem drugi algorytm mierzy 11 cech ważnych dla poruszania się gracza i porównuje układ z już zaakceptowanymi. Wyszukiwarka przegląda kolejne ziarna i bierze najlepszy układ, który przejdzie oba progi.</p>
   </header>
 
   <div class="grid2">
@@ -165,12 +167,25 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
     </section>
   </div>
 
+  <section class="panel" aria-label="Porównanie algorytmów">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px">
+      <h2>Porównanie algorytmów na tym samym ziarnie</h2>
+      <label class="toggles" style="gap:6px"><input type="checkbox" id="cPure"> czysty labirynt (bez pokoi i obróbki)</label>
+    </div>
+    <div class="cmp" id="cmp"></div>
+    <p class="msg">Kliknij miniaturę, żeby wczytać ten algorytm na dużą mapę. Wyniki z 300 ziaren: Growing Tree 75/25 ma najwyższą średnią (90.5 pkt), Prim i Binary Tree najniższą (ok. 80).</p>
+  </section>
+
   <div class="grid2b">
     <section class="panel" aria-label="Parametry">
       <h2>Parametry</h2>
       <div class="params">
         <div class="f"><div class="top"><label for="size">Rozmiar mapy (kafle)</label></div>
           <select id="size"><option value="31x31">31 × 31</option><option value="41x41" selected>41 × 41</option><option value="51x41">51 × 41</option><option value="61x45">61 × 45</option></select></div>
+        <div class="f"><div class="top"><label for="maze">Algorytm labiryntu</label></div>
+          <select id="maze"><option value="backtracker" selected>Recursive Backtracker</option><option value="huntAndKill">Hunt-and-Kill</option><option value="growingMix">Growing Tree 75/25</option><option value="wilson">Wilson</option><option value="kruskal">Kruskal</option><option value="prim">Prim</option><option value="binaryTree">Binary Tree</option></select></div>
+        <div class="f"><div class="top"><label for="loopMode">Tryb pętli</label></div>
+          <select id="loopMode"><option value="shortcut" selected>skróty (najdalsze strony ściany)</option><option value="random">losowe</option></select></div>
         <div class="f"><div class="top"><label for="tries">Prób na wyszukiwanie</label><output id="triesV"></output></div><input type="range" id="tries" min="5" max="60" value="20"></div>
         <div class="f checks"><span>Pokoje (w komórkach):</span>
           <label><input type="checkbox" id="s33" checked> 3×3</label>
@@ -208,6 +223,8 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
       <p><b>Pasma docelowe.</b> Każda cecha ma przedział, w którym dostaje 100%. Poza nim wynik spada liniowo do zera. Ocena to średnia ważona. Przedziały dobrałem po zmierzeniu 300 losowych układów i warto je stroić pod konkretną grę.</p>
       <p><b>Unikalność.</b> Mapa dzielona jest na siatkę 6×6 sektorów, a w każdym liczony jest udział pokoi i pól chodliwych. Odcisk porównywany jest z każdym zaakceptowanym układem także po odbiciach lustrzanych, bo odbita mapa gra się tak samo. Dwa losowe układy mają zwykle 10–35% podobieństwa, a prawie-duplikat ok. 100%.</p>
       <p><b>Rozmiary pokoi</b> liczone są w komórkach logicznych siatki nieparzystej. Pokój 3×4 zajmuje 5×7 kafli, bo między komórkami są kafle ścian, które w pokoju też są wykute.</p>
+      <p><b>Algorytmy labiryntu</b> różnią się fakturą. Backtracker i Hunt-and-Kill dają długie, kręte korytarze z małą liczbą rozwidleń, a Prim, Kruskal i Wilson krótkie odnogi i dużo zaułków. Growing Tree 75/25 jest pośrodku i po obróbce wypada najlepiej.</p>
+      <p><b>Pętle-skróty</b> (pomysł z gry Brogue) za każdym razem otwierają ścianę, której dwie strony są najdalej od siebie w grafie korytarzy. Przy tej samej liczbie otwarć backtracker zyskuje ok. 4 pkt, a krętość spada z 2.3 do 2.0.</p>
       <p><b>Poszerzenia</b> powstają tylko obok litej skały, którą zostawia przerzedzenie. Przy przerzedzeniu 0% nie ma na nie miejsca. Pas jest dobudowany wzdłuż prostego odcinka 2–4 komórek i nie łączy się z niczym innym.</p>
     </div>
   </section>
@@ -222,6 +239,128 @@ function mulberry32(a) {
   return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
+
+// ===== ALGORYTMY LABIRYNTU =====
+// Każdy dostaje kontekst M i wypełnia wszystkie wolne komórki (poza pokojami) drzewem korytarzy.
+const MAZES = {
+  // DFS z powrotami: długie, kręte korytarze, mało rozgałęzień
+  backtracker(M) {
+    for (const s of M.shuffle([...Array(M.LW * M.LH).keys()])) {
+      const si = s % M.LW, sj = (s / M.LW) | 0;
+      if (M.carved(si, sj)) continue;
+      M.carve(si, sj);
+      const st = [[si, sj]];
+      while (st.length) {
+        const [i, j] = st[st.length - 1];
+        const ns = DIRS.filter(([dx, dy]) => M.free(i + dx, j + dy));
+        if (!ns.length) { st.pop(); continue; }
+        const [dx, dy] = ns[M.ri(ns.length)];
+        M.link(i, j, dx, dy); st.push([i + dx, j + dy]);
+      }
+    }
+  },
+  // Growing Tree: wybór komórki z listy aktywnych decyduje o fakturze
+  growingTree(M, pick) {
+    for (const s of M.shuffle([...Array(M.LW * M.LH).keys()])) {
+      const si = s % M.LW, sj = (s / M.LW) | 0;
+      if (M.carved(si, sj)) continue;
+      M.carve(si, sj);
+      const C = [[si, sj]];
+      while (C.length) {
+        const k = pick(C.length);
+        const [i, j] = C[k];
+        const ns = DIRS.filter(([dx, dy]) => M.free(i + dx, j + dy));
+        if (!ns.length) { C.splice(k, 1); continue; }
+        const [dx, dy] = ns[M.ri(ns.length)];
+        M.link(i, j, dx, dy); C.push([i + dx, j + dy]);
+      }
+    }
+  },
+  // Prim (Growing Tree z losowym wyborem): krótkie odnogi, dużo zaułków
+  prim(M) { MAZES.growingTree(M, n => M.ri(n)); },
+  // Growing Tree 75% najnowsza / 25% losowa: kompromis między DFS a Primem
+  growingMix(M) { MAZES.growingTree(M, n => (M.ri(4) ? n - 1 : M.ri(n))); },
+  // Kruskal: losowe krawędzie + union-find; równomierna, „kłująca” faktura
+  kruskal(M) {
+    const N = M.LW * M.LH, par = [...Array(N).keys()], edges = [];
+    const find = x => { while (par[x] !== x) x = par[x] = par[par[x]]; return x; };
+    for (let j = 0; j < M.LH; j++) for (let i = 0; i < M.LW; i++) {
+      if (!M.free(i, j)) continue;
+      if (M.free(i + 1, j)) edges.push([i, j, 1, 0]);
+      if (M.free(i, j + 1)) edges.push([i, j, 0, 1]);
+    }
+    const cells = [];
+    for (let j = 0; j < M.LH; j++) for (let i = 0; i < M.LW; i++) if (M.free(i, j)) cells.push([i, j]);
+    cells.forEach(([i, j]) => M.carve(i, j));
+    for (const [i, j, dx, dy] of M.shuffle(edges)) {
+      const a = find(j * M.LW + i), b = find((j + dy) * M.LW + i + dx);
+      if (a !== b) { par[a] = b; M.link(i, j, dx, dy); }
+    }
+  },
+  // Wilson: błądzenie losowe z wymazywaniem pętli; jednostajnie losowe drzewo rozpinające
+  wilson(M) {
+    const N = M.LW * M.LH, regn = new Int32Array(N).fill(-1);
+    let nr = 0;
+    for (let s = 0; s < N; s++) {
+      const si = s % M.LW, sj = (s / M.LW) | 0;
+      if (regn[s] >= 0 || !M.free(si, sj)) continue;
+      const q = [[si, sj]], cells = []; regn[s] = nr;
+      while (q.length) { const [i, j] = q.pop(); cells.push([i, j]);
+        for (const [dx, dy] of DIRS) { const ni = i + dx, nj = j + dy;
+          if (M.free(ni, nj) && regn[nj * M.LW + ni] < 0) { regn[nj * M.LW + ni] = nr; q.push([ni, nj]); } } }
+      const r = nr++, inTree = new Uint8Array(N), dir = new Int8Array(N).fill(-1);
+      const [s0i, s0j] = cells[M.ri(cells.length)];
+      inTree[s0j * M.LW + s0i] = 1; M.carve(s0i, s0j);
+      for (const [ci, cj] of M.shuffle(cells)) {
+        let i = ci, j = cj;
+        while (!inTree[j * M.LW + i]) {
+          const ns = [];
+          for (let d = 0; d < 4; d++) { const ni = i + DIRS[d][0], nj = j + DIRS[d][1]; if (M.inL(ni, nj) && regn[nj * M.LW + ni] === r) ns.push(d); }
+          const d = ns[M.ri(ns.length)];
+          dir[j * M.LW + i] = d; i += DIRS[d][0]; j += DIRS[d][1];
+        }
+        i = ci; j = cj;
+        while (!inTree[j * M.LW + i]) {
+          const d = dir[j * M.LW + i];
+          inTree[j * M.LW + i] = 1; M.carve(i, j); M.link(i, j, DIRS[d][0], DIRS[d][1]);
+          i += DIRS[d][0]; j += DIRS[d][1];
+        }
+      }
+    }
+  },
+  // Hunt-and-Kill: błądzenie bez powrotów, po utknięciu szukanie nowego startu przy istniejącym korytarzu
+  huntAndKill(M) {
+    for (const s of M.shuffle([...Array(M.LW * M.LH).keys()])) {
+      let i = s % M.LW, j = (s / M.LW) | 0;
+      if (M.carved(i, j)) continue;
+      M.carve(i, j);
+      for (;;) {
+        const ns = DIRS.filter(([dx, dy]) => M.free(i + dx, j + dy));
+        if (ns.length) { const [dx, dy] = ns[M.ri(ns.length)]; M.link(i, j, dx, dy); i += dx; j += dy; continue; }
+        let found = false;
+        for (let hj = 0; hj < M.LH && !found; hj++) for (let hi = 0; hi < M.LW && !found; hi++) {
+          if (!M.free(hi, hj)) continue;
+          const back = DIRS.filter(([dx, dy]) => M.isCor(hi + dx, hj + dy));
+          if (!back.length) continue;
+          const [dx, dy] = back[M.ri(back.length)];
+          M.carve(hi, hj); M.link(hi + dx, hj + dy, -dx, -dy); i = hi; j = hj; found = true;
+        }
+        if (!found) break;
+      }
+    }
+  },
+  // Binary Tree: każda komórka łączy się na wschód albo na południe; silne ukośne ukierunkowanie
+  binaryTree(M) {
+    const cells = [];
+    for (let j = 0; j < M.LH; j++) for (let i = 0; i < M.LW; i++) if (M.free(i, j)) cells.push([i, j]);
+    const ok = new Set(cells.map(([i, j]) => j * M.LW + i));
+    cells.forEach(([i, j]) => M.carve(i, j));
+    for (const [i, j] of cells) {
+      const opts = [[1, 0], [0, 1]].filter(([dx, dy]) => ok.has((j + dy) * M.LW + i + dx) && M.inL(i + dx, j + dy));
+      if (opts.length) { const [dx, dy] = opts[M.ri(opts.length)]; M.link(i, j, dx, dy); }
+    }
+  },
+};
 
 function generate(P, seed) {
   const rng = mulberry32(seed);
@@ -263,26 +402,30 @@ function generate(P, seed) {
   }
   snap('Pokoje');
 
-  // 2. Recursive Backtracker w wolnych komórkach (może powstać kilka regionów)
+  // 2. Labirynt w wolnych komórkach (domyślnie Recursive Backtracker; P.maze wybiera inny algorytm)
+  const M = { LW, LH, inL, carved, ri, shuffle,
+    free: (i, j) => inL(i, j) && !carved(i, j),
+    isCor: (i, j) => carved(i, j) && rid[at(cx(i), cx(j))] < 0,
+    carve: (i, j) => { t[at(cx(i), cx(j))] = COR; },
+    link: (i, j, dx, dy) => { t[at(cx(i) + dx, cx(j) + dy)] = COR; t[at(cx(i + dx), cx(j + dy))] = COR; } };
+  (MAZES[P.maze || 'backtracker'] || MAZES.backtracker)(M);
+  // regiony: pokoje mają id 0..R-1, każdy spójny kawałek korytarzy dostaje kolejne id
   const reg = new Int32Array(LW * LH).fill(-1);
   rooms.forEach((r, id) => { for (let j = r.j; j < r.j + r.h; j++) for (let i = r.i; i < r.i + r.w; i++) reg[j * LW + i] = id; });
   let nReg = rooms.length;
-  for (const s of shuffle([...Array(LW * LH).keys()])) {
+  for (let s = 0; s < LW * LH; s++) {
     const si = s % LW, sj = (s / LW) | 0;
-    if (carved(si, sj)) continue;
-    const r = nReg++;
-    t[at(cx(si), cx(sj))] = COR; reg[s] = r;
-    const st = [[si, sj]];
-    while (st.length) {
-      const [i, j] = st[st.length - 1];
-      const ns = DIRS.filter(([dx, dy]) => inL(i + dx, j + dy) && !carved(i + dx, j + dy));
-      if (!ns.length) { st.pop(); continue; }
-      const [dx, dy] = ns[ri(ns.length)];
-      t[at(cx(i) + dx, cx(j) + dy)] = COR; t[at(cx(i + dx), cx(j + dy))] = COR;
-      reg[(j + dy) * LW + i + dx] = r; st.push([i + dx, j + dy]);
+    if (reg[s] >= 0 || !carved(si, sj)) continue;
+    const r = nReg++, q = [[si, sj]]; reg[s] = r;
+    while (q.length) {
+      const [i, j] = q.pop();
+      for (const [dx, dy] of DIRS) {
+        const ni = i + dx, nj = j + dy;
+        if (M.isCor(ni, nj) && reg[nj * LW + ni] < 0 && t[at(cx(i) + dx, cx(j) + dy)]) { reg[nj * LW + ni] = r; q.push([ni, nj]); }
+      }
     }
   }
-  snap('Labirynt DFS');
+  snap('Labirynt');
 
   // 3. Drzwi: drzewo rozpinające regionów (Kruskal) + losowe dodatkowe drzwi
   const parent = [...Array(nReg).keys()];
@@ -343,10 +486,29 @@ function generate(P, seed) {
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) for (const [dx, dy] of [[1, 0], [0, 1]])
     if (isCor(i, j) && isCor(i + dx, j + dy) && t[at(cx(i) + dx, cx(j) + dy)] === ROCK) lw.push([i, j, dx, dy]);
   let nl = Math.round(lw.length * P.loops);
-  for (const [i, j, dx, dy] of shuffle(lw)) {
-    if (nl <= 0) break;
-    if (tight(i, j, dx, dy)) continue;
-    t[at(cx(i) + dx, cx(j) + dy)] = LOOP; nl--;
+  if (P.loopMode === 'shortcut') {
+    // Wariant „skrótów” (jak w Brogue): zawsze otwieraj ścianę, która najbardziej skraca drogę między jej stronami
+    const cellDist = (si, sj, ti, tj) => {
+      const d = new Int32Array(LW * LH).fill(-1), q = [[si, sj]]; d[sj * LW + si] = 0;
+      for (let h = 0; h < q.length; h++) { const [i, j] = q[h];
+        if (i === ti && j === tj) return d[j * LW + i];
+        for (const [dx, dy] of DIRS) if (open(i, j, dx, dy) && d[(j + dy) * LW + i + dx] < 0) { d[(j + dy) * LW + i + dx] = d[j * LW + i] + 1; q.push([i + dx, j + dy]); } }
+      return Infinity;
+    };
+    const cand = shuffle(lw).filter(w => !tight(...w));
+    while (nl > 0 && cand.length) {
+      let best = -1, bestD = -1;
+      cand.forEach(([i, j, dx, dy], k) => { const d = cellDist(i, j, i + dx, j + dy); if (d > bestD) { bestD = d; best = k; } });
+      if (bestD < (P.shortcutMin || 6)) break;
+      const [i, j, dx, dy] = cand.splice(best, 1)[0];
+      t[at(cx(i) + dx, cx(j) + dy)] = LOOP; nl--;
+    }
+  } else {
+    for (const [i, j, dx, dy] of shuffle(lw)) {
+      if (nl <= 0) break;
+      if (tight(i, j, dx, dy)) continue;
+      t[at(cx(i) + dx, cx(j) + dy)] = LOOP; nl--;
+    }
   }
   snap('Pętle');
 
@@ -545,7 +707,7 @@ function evaluate(G, P, history) {
 (() => {
   const $ = id => document.getElementById(id);
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  const STAGES = ['Pokoje', 'Labirynt DFS', 'Drzwi', 'Przerzedzenie', 'Zaułki', 'Pętle', 'Poszerzenia'];
+  const STAGES = ['Pokoje', 'Labirynt', 'Drzwi', 'Przerzedzenie', 'Zaułki', 'Pętle', 'Poszerzenia'];
   let history = [], cands = [], cur = null, stage = 6;
 
   const sliders = { tries: v => v, density: v => v + '%', extraDoor: v => v + '%', sparse: v => v + '%', braid: v => v + '%',
@@ -558,7 +720,7 @@ function evaluate(G, P, history) {
     const [W, H] = $('size').value.split('x').map(Number);
     return { W, H, density: $('density').value / 100, s33: $('s33').checked, s34: $('s34').checked, s42: $('s42').checked,
       extraDoor: $('extraDoor').value / 100, sparse: $('sparse').value / 100, braid: $('braid').value / 100,
-      loops: $('loops').value / 100, wide: Number($('wide').value) };
+      loops: $('loops').value / 100, wide: Number($('wide').value), maze: $('maze').value, loopMode: $('loopMode').value };
   }
 
   function verdictOf(e) {
@@ -596,7 +758,7 @@ function evaluate(G, P, history) {
   function show(c) {
     cur = c; stage = 6;
     $('bAccept').hidden = !!c.accepted || !!c.why || history.some(h => h.seed === c.seed);
-    renderStages(); draw(); renderScore(); renderCands(); renderThumbs();
+    renderStages(); draw(); renderScore(); renderCands(); renderThumbs(); renderCompare();
   }
   const say = t => { $('msg').textContent = t; };
 
@@ -714,6 +876,39 @@ function evaluate(G, P, history) {
     }
   }
 
+  const ALGOS = [['backtracker', 'Recursive Backtracker'], ['huntAndKill', 'Hunt-and-Kill'], ['growingMix', 'Growing Tree 75/25'],
+    ['wilson', 'Wilson'], ['kruskal', 'Kruskal'], ['prim', 'Prim'], ['binaryTree', 'Binary Tree']];
+  function renderCompare() {
+    const box = $('cmp'); box.innerHTML = '';
+    if (!cur) return;
+    const pure = $('cPure').checked, P0 = readP();
+    const P = pure ? { ...P0, s33: false, s34: false, s42: false, extraDoor: 0, sparse: 0, braid: 0, loops: 0, wide: 0 } : P0;
+    const col = colors();
+    for (const [id, name] of ALGOS) {
+      const Q = { ...P, maze: id }, G = generate(Q, cur.seed), e = evaluate(G, Q, history);
+      const d = document.createElement('div'); d.className = 'thumb' + (id === P0.maze ? ' cur' : ''); d.tabIndex = 0;
+      const c = document.createElement('canvas'); c.width = G.W * 4; c.height = G.H * 4;
+      paint(c.getContext('2d'), G, G.t, 4, col);
+      const v = k => e.M.find(m => m.key === k).v;
+      const b = document.createElement('b'); b.textContent = name;
+      const s = document.createElement('span');
+      s.textContent = pure ? `zaułki ${Math.round(e.deadList.length / Math.max(1, e.V) * 100)}% · rozwidl. ${Math.round(v('junc') * 100)}%`
+        : `${e.score} pkt · krętość ${v('tort').toFixed(2)}`;
+      d.append(c, b, s);
+      d.onclick = d.onkeydown = ev => { if (ev.type === 'keydown' && ev.key !== 'Enter') return; $('maze').value = id; rerun(); };
+      box.appendChild(d);
+    }
+  }
+  // zmiana algorytmu lub trybu pętli od razu przelicza bieżące ziarno
+  function rerun() {
+    if (!cur) return;
+    const c = run(cur.seed, readP()); cands = [c]; show(c);
+    say(`Ziarno #${c.seed}, ${$('maze').selectedOptions[0].text}, pętle: ${$('loopMode').selectedOptions[0].text}. ` + (c.why ? `Nie przechodzi: ${c.why}.` : 'Przechodzi progi.'));
+  }
+  $('maze').onchange = rerun;
+  $('loopMode').onchange = rerun;
+  $('cPure').onchange = renderCompare;
+
   $('bSearch').onclick = () => search(false);
   $('bEval').onclick = () => {
     const s = Number($('seed').value) || 1; const c = run(s, readP());
@@ -735,7 +930,7 @@ function evaluate(G, P, history) {
   });
   addEventListener('resize', draw);
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { draw(); renderThumbs(); });
-  new MutationObserver(() => { draw(); renderThumbs(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  new MutationObserver(() => { draw(); renderThumbs(); renderCompare(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   document.fonts?.ready.then(draw);
 
   // stan startowy: trzy wyszukiwania, żeby historia i unikalność miały z czym pracować

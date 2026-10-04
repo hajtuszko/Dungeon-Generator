@@ -38,7 +38,7 @@ Parametry `P`:
   loopMode: 'random' }     // opcjonalnie 'shortcut': pętle tam, gdzie najbardziej skracają drogę
 ```
 
-`ocena_ukladu.html` ma wbudowaną starszą kopię `core.js` bez parametrów `maze` i `loopMode`.
+`ocena_ukladu.html` ma wbudowaną kopię `core.js` (po zmianie `core.js` trzeba ją odświeżyć) oraz panel porównujący wszystkie algorytmy labiryntu na tym samym ziarnie.
 
 Wynik: `{ W, H, t, rid, rooms, stages, seed }`, gdzie `t[y*W+x]` to typ kafla: `0` skała, `1` korytarz, `2` pokój, `3` drzwi, `4` poszerzenie, `5` dodatkowe przejście. `rid` to indeks pokoju dla kafli pokoju, a `stages` zawiera stan mapy po każdym etapie.
 
