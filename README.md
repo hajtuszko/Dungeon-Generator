@@ -7,6 +7,7 @@ Narzędzia do generowania i oceny układów wnętrz (korytarze + pokoje) dla gry
 | `recursive_backtracker.html` | Animacja algorytmu Recursive Backtracker (DFS z powrotami) na komórkach o nieparzystych współrzędnych, z drugą fazą: usuwaniem ślepych zaułków i pętlami. |
 | `ocena_ukladu.html` | Generator wnętrz z pokojami 3×3, 3×4, 4×2 i poszerzeniami korytarzy, algorytmem oceny grywalności i kontrolą unikalności. |
 | `core.js` | Sam generator i ocena, bez interfejsu. Działa w przeglądarce i w Node (`require('./core.js')`). |
+| `badania/` | Badania nad nowym algorytmem: przegląd literatury, porównanie algorytmów labiryntu, wyniki pomiarów. |
 
 Oba pliki HTML otwiera się bezpośrednio w przeglądarce, bez serwera. `ocena_ukladu.html` ma wbudowaną kopię kodu z `core.js`.
 
@@ -32,8 +33,12 @@ Parametry `P`:
   sparse: 0.25,            // jaka część korytarzy zostaje zasypana
   braid: 0.5,              // szansa usunięcia ślepego zaułka
   loops: 0.1,              // jaki procent ścian między korytarzami otworzyć
-  wide: 4 }                // maks. liczba poszerzeń
+  wide: 4,                 // maks. liczba poszerzeń
+  maze: 'backtracker',     // opcjonalnie: huntAndKill, growingMix, wilson, kruskal, prim, binaryTree
+  loopMode: 'random' }     // opcjonalnie 'shortcut': pętle tam, gdzie najbardziej skracają drogę
 ```
+
+`ocena_ukladu.html` ma wbudowaną starszą kopię `core.js` bez parametrów `maze` i `loopMode`.
 
 Wynik: `{ W, H, t, rid, rooms, stages, seed }`, gdzie `t[y*W+x]` to typ kafla: `0` skała, `1` korytarz, `2` pokój, `3` drzwi, `4` poszerzenie, `5` dodatkowe przejście. `rid` to indeks pokoju dla kafli pokoju, a `stages` zawiera stan mapy po każdym etapie.
 

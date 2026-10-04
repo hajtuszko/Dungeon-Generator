@@ -7,6 +7,128 @@ function mulberry32(a) {
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
 
+// ===== ALGORYTMY LABIRYNTU =====
+// Każdy dostaje kontekst M i wypełnia wszystkie wolne komórki (poza pokojami) drzewem korytarzy.
+const MAZES = {
+  // DFS z powrotami: długie, kręte korytarze, mało rozgałęzień
+  backtracker(M) {
+    for (const s of M.shuffle([...Array(M.LW * M.LH).keys()])) {
+      const si = s % M.LW, sj = (s / M.LW) | 0;
+      if (M.carved(si, sj)) continue;
+      M.carve(si, sj);
+      const st = [[si, sj]];
+      while (st.length) {
+        const [i, j] = st[st.length - 1];
+        const ns = DIRS.filter(([dx, dy]) => M.free(i + dx, j + dy));
+        if (!ns.length) { st.pop(); continue; }
+        const [dx, dy] = ns[M.ri(ns.length)];
+        M.link(i, j, dx, dy); st.push([i + dx, j + dy]);
+      }
+    }
+  },
+  // Growing Tree: wybór komórki z listy aktywnych decyduje o fakturze
+  growingTree(M, pick) {
+    for (const s of M.shuffle([...Array(M.LW * M.LH).keys()])) {
+      const si = s % M.LW, sj = (s / M.LW) | 0;
+      if (M.carved(si, sj)) continue;
+      M.carve(si, sj);
+      const C = [[si, sj]];
+      while (C.length) {
+        const k = pick(C.length);
+        const [i, j] = C[k];
+        const ns = DIRS.filter(([dx, dy]) => M.free(i + dx, j + dy));
+        if (!ns.length) { C.splice(k, 1); continue; }
+        const [dx, dy] = ns[M.ri(ns.length)];
+        M.link(i, j, dx, dy); C.push([i + dx, j + dy]);
+      }
+    }
+  },
+  // Prim (Growing Tree z losowym wyborem): krótkie odnogi, dużo zaułków
+  prim(M) { MAZES.growingTree(M, n => M.ri(n)); },
+  // Growing Tree 75% najnowsza / 25% losowa: kompromis między DFS a Primem
+  growingMix(M) { MAZES.growingTree(M, n => (M.ri(4) ? n - 1 : M.ri(n))); },
+  // Kruskal: losowe krawędzie + union-find; równomierna, „kłująca” faktura
+  kruskal(M) {
+    const N = M.LW * M.LH, par = [...Array(N).keys()], edges = [];
+    const find = x => { while (par[x] !== x) x = par[x] = par[par[x]]; return x; };
+    for (let j = 0; j < M.LH; j++) for (let i = 0; i < M.LW; i++) {
+      if (!M.free(i, j)) continue;
+      if (M.free(i + 1, j)) edges.push([i, j, 1, 0]);
+      if (M.free(i, j + 1)) edges.push([i, j, 0, 1]);
+    }
+    const cells = [];
+    for (let j = 0; j < M.LH; j++) for (let i = 0; i < M.LW; i++) if (M.free(i, j)) cells.push([i, j]);
+    cells.forEach(([i, j]) => M.carve(i, j));
+    for (const [i, j, dx, dy] of M.shuffle(edges)) {
+      const a = find(j * M.LW + i), b = find((j + dy) * M.LW + i + dx);
+      if (a !== b) { par[a] = b; M.link(i, j, dx, dy); }
+    }
+  },
+  // Wilson: błądzenie losowe z wymazywaniem pętli; jednostajnie losowe drzewo rozpinające
+  wilson(M) {
+    const N = M.LW * M.LH, regn = new Int32Array(N).fill(-1);
+    let nr = 0;
+    for (let s = 0; s < N; s++) {
+      const si = s % M.LW, sj = (s / M.LW) | 0;
+      if (regn[s] >= 0 || !M.free(si, sj)) continue;
+      const q = [[si, sj]], cells = []; regn[s] = nr;
+      while (q.length) { const [i, j] = q.pop(); cells.push([i, j]);
+        for (const [dx, dy] of DIRS) { const ni = i + dx, nj = j + dy;
+          if (M.free(ni, nj) && regn[nj * M.LW + ni] < 0) { regn[nj * M.LW + ni] = nr; q.push([ni, nj]); } } }
+      const r = nr++, inTree = new Uint8Array(N), dir = new Int8Array(N).fill(-1);
+      const [s0i, s0j] = cells[M.ri(cells.length)];
+      inTree[s0j * M.LW + s0i] = 1; M.carve(s0i, s0j);
+      for (const [ci, cj] of M.shuffle(cells)) {
+        let i = ci, j = cj;
+        while (!inTree[j * M.LW + i]) {
+          const ns = [];
+          for (let d = 0; d < 4; d++) { const ni = i + DIRS[d][0], nj = j + DIRS[d][1]; if (M.inL(ni, nj) && regn[nj * M.LW + ni] === r) ns.push(d); }
+          const d = ns[M.ri(ns.length)];
+          dir[j * M.LW + i] = d; i += DIRS[d][0]; j += DIRS[d][1];
+        }
+        i = ci; j = cj;
+        while (!inTree[j * M.LW + i]) {
+          const d = dir[j * M.LW + i];
+          inTree[j * M.LW + i] = 1; M.carve(i, j); M.link(i, j, DIRS[d][0], DIRS[d][1]);
+          i += DIRS[d][0]; j += DIRS[d][1];
+        }
+      }
+    }
+  },
+  // Hunt-and-Kill: błądzenie bez powrotów, po utknięciu szukanie nowego startu przy istniejącym korytarzu
+  huntAndKill(M) {
+    for (const s of M.shuffle([...Array(M.LW * M.LH).keys()])) {
+      let i = s % M.LW, j = (s / M.LW) | 0;
+      if (M.carved(i, j)) continue;
+      M.carve(i, j);
+      for (;;) {
+        const ns = DIRS.filter(([dx, dy]) => M.free(i + dx, j + dy));
+        if (ns.length) { const [dx, dy] = ns[M.ri(ns.length)]; M.link(i, j, dx, dy); i += dx; j += dy; continue; }
+        let found = false;
+        for (let hj = 0; hj < M.LH && !found; hj++) for (let hi = 0; hi < M.LW && !found; hi++) {
+          if (!M.free(hi, hj)) continue;
+          const back = DIRS.filter(([dx, dy]) => M.isCor(hi + dx, hj + dy));
+          if (!back.length) continue;
+          const [dx, dy] = back[M.ri(back.length)];
+          M.carve(hi, hj); M.link(hi + dx, hj + dy, -dx, -dy); i = hi; j = hj; found = true;
+        }
+        if (!found) break;
+      }
+    }
+  },
+  // Binary Tree: każda komórka łączy się na wschód albo na południe; silne ukośne ukierunkowanie
+  binaryTree(M) {
+    const cells = [];
+    for (let j = 0; j < M.LH; j++) for (let i = 0; i < M.LW; i++) if (M.free(i, j)) cells.push([i, j]);
+    const ok = new Set(cells.map(([i, j]) => j * M.LW + i));
+    cells.forEach(([i, j]) => M.carve(i, j));
+    for (const [i, j] of cells) {
+      const opts = [[1, 0], [0, 1]].filter(([dx, dy]) => ok.has((j + dy) * M.LW + i + dx) && M.inL(i + dx, j + dy));
+      if (opts.length) { const [dx, dy] = opts[M.ri(opts.length)]; M.link(i, j, dx, dy); }
+    }
+  },
+};
+
 function generate(P, seed) {
   const rng = mulberry32(seed);
   const W = P.W, H = P.H, LW = (W - 1) / 2, LH = (H - 1) / 2;
@@ -47,26 +169,30 @@ function generate(P, seed) {
   }
   snap('Pokoje');
 
-  // 2. Recursive Backtracker w wolnych komórkach (może powstać kilka regionów)
+  // 2. Labirynt w wolnych komórkach (domyślnie Recursive Backtracker; P.maze wybiera inny algorytm)
+  const M = { LW, LH, inL, carved, ri, shuffle,
+    free: (i, j) => inL(i, j) && !carved(i, j),
+    isCor: (i, j) => carved(i, j) && rid[at(cx(i), cx(j))] < 0,
+    carve: (i, j) => { t[at(cx(i), cx(j))] = COR; },
+    link: (i, j, dx, dy) => { t[at(cx(i) + dx, cx(j) + dy)] = COR; t[at(cx(i + dx), cx(j + dy))] = COR; } };
+  (MAZES[P.maze || 'backtracker'] || MAZES.backtracker)(M);
+  // regiony: pokoje mają id 0..R-1, każdy spójny kawałek korytarzy dostaje kolejne id
   const reg = new Int32Array(LW * LH).fill(-1);
   rooms.forEach((r, id) => { for (let j = r.j; j < r.j + r.h; j++) for (let i = r.i; i < r.i + r.w; i++) reg[j * LW + i] = id; });
   let nReg = rooms.length;
-  for (const s of shuffle([...Array(LW * LH).keys()])) {
+  for (let s = 0; s < LW * LH; s++) {
     const si = s % LW, sj = (s / LW) | 0;
-    if (carved(si, sj)) continue;
-    const r = nReg++;
-    t[at(cx(si), cx(sj))] = COR; reg[s] = r;
-    const st = [[si, sj]];
-    while (st.length) {
-      const [i, j] = st[st.length - 1];
-      const ns = DIRS.filter(([dx, dy]) => inL(i + dx, j + dy) && !carved(i + dx, j + dy));
-      if (!ns.length) { st.pop(); continue; }
-      const [dx, dy] = ns[ri(ns.length)];
-      t[at(cx(i) + dx, cx(j) + dy)] = COR; t[at(cx(i + dx), cx(j + dy))] = COR;
-      reg[(j + dy) * LW + i + dx] = r; st.push([i + dx, j + dy]);
+    if (reg[s] >= 0 || !carved(si, sj)) continue;
+    const r = nReg++, q = [[si, sj]]; reg[s] = r;
+    while (q.length) {
+      const [i, j] = q.pop();
+      for (const [dx, dy] of DIRS) {
+        const ni = i + dx, nj = j + dy;
+        if (M.isCor(ni, nj) && reg[nj * LW + ni] < 0 && t[at(cx(i) + dx, cx(j) + dy)]) { reg[nj * LW + ni] = r; q.push([ni, nj]); }
+      }
     }
   }
-  snap('Labirynt DFS');
+  snap('Labirynt');
 
   // 3. Drzwi: drzewo rozpinające regionów (Kruskal) + losowe dodatkowe drzwi
   const parent = [...Array(nReg).keys()];
@@ -127,10 +253,29 @@ function generate(P, seed) {
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) for (const [dx, dy] of [[1, 0], [0, 1]])
     if (isCor(i, j) && isCor(i + dx, j + dy) && t[at(cx(i) + dx, cx(j) + dy)] === ROCK) lw.push([i, j, dx, dy]);
   let nl = Math.round(lw.length * P.loops);
-  for (const [i, j, dx, dy] of shuffle(lw)) {
-    if (nl <= 0) break;
-    if (tight(i, j, dx, dy)) continue;
-    t[at(cx(i) + dx, cx(j) + dy)] = LOOP; nl--;
+  if (P.loopMode === 'shortcut') {
+    // Wariant „skrótów” (jak w Brogue): zawsze otwieraj ścianę, która najbardziej skraca drogę między jej stronami
+    const cellDist = (si, sj, ti, tj) => {
+      const d = new Int32Array(LW * LH).fill(-1), q = [[si, sj]]; d[sj * LW + si] = 0;
+      for (let h = 0; h < q.length; h++) { const [i, j] = q[h];
+        if (i === ti && j === tj) return d[j * LW + i];
+        for (const [dx, dy] of DIRS) if (open(i, j, dx, dy) && d[(j + dy) * LW + i + dx] < 0) { d[(j + dy) * LW + i + dx] = d[j * LW + i] + 1; q.push([i + dx, j + dy]); } }
+      return Infinity;
+    };
+    const cand = shuffle(lw).filter(w => !tight(...w));
+    while (nl > 0 && cand.length) {
+      let best = -1, bestD = -1;
+      cand.forEach(([i, j, dx, dy], k) => { const d = cellDist(i, j, i + dx, j + dy); if (d > bestD) { bestD = d; best = k; } });
+      if (bestD < (P.shortcutMin || 6)) break;
+      const [i, j, dx, dy] = cand.splice(best, 1)[0];
+      t[at(cx(i) + dx, cx(j) + dy)] = LOOP; nl--;
+    }
+  } else {
+    for (const [i, j, dx, dy] of shuffle(lw)) {
+      if (nl <= 0) break;
+      if (tight(i, j, dx, dy)) continue;
+      t[at(cx(i) + dx, cx(j) + dy)] = LOOP; nl--;
+    }
   }
   snap('Pętle');
 
@@ -326,4 +471,4 @@ function evaluate(G, P, history) {
   return { connected, score, M, maxSim, simTo, sig, seed: G.seed, cycles, V, E, wideTiles,
     deadList, chokes, straight, far, rooms: R, doors };
 }
-if (typeof module !== 'undefined') module.exports = { generate, evaluate, similarity, ROCK, COR, ROOM, DOOR, WIDE, LOOP };
+if (typeof module !== 'undefined') module.exports = { MAZES, generate, evaluate, similarity, ROCK, COR, ROOM, DOOR, WIDE, LOOP };
