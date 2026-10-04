@@ -7,6 +7,59 @@ function mulberry32(a) {
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
 
+// ===== GRAF NAWIGACYJNY =====
+// Pokój = 1 węzeł (indeks 0..R-1), komórka korytarza = 1 węzeł, otwarta ściana lub drzwi = krawędź
+function navGraph(W, LW, LH, t, rid, R) {
+  const at = (x, y) => y * W + x, cx = i => 2 * i + 1;
+  const node = new Int32Array(LW * LH).fill(-1), corCells = [];
+  for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
+    const k = at(cx(i), cx(j));
+    if (!t[k]) continue;
+    if (rid[k] >= 0) node[j * LW + i] = rid[k]; else { node[j * LW + i] = R + corCells.length; corCells.push([i, j]); }
+  }
+  const V = R + corCells.length, adj = Array.from({ length: V }, () => []), edges = [];
+  for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) for (const [dx, dy] of [[1, 0], [0, 1]]) {
+    if (i + dx >= LW || j + dy >= LH) continue;
+    const a = node[j * LW + i], b = node[(j + dy) * LW + i + dx];
+    if (a < 0 || b < 0 || a === b || !t[at(cx(i) + dx, cx(j) + dy)]) continue;
+    adj[a].push(b); adj[b].push(a); edges.push([a, b, cx(i) + dx, cx(j) + dy]);
+  }
+  return { node, corCells, V, adj, edges };
+}
+const edgeKey = (a, b) => a < b ? a + ',' + b : b + ',' + a;
+// Mosty grafu (Tarjan): krawędzie, po których usunięciu graf się rozpada
+function bridgeSet(V, adj) {
+  const disc = new Int32Array(V).fill(-1), low = new Int32Array(V), out = new Set();
+  let timer = 0;
+  const dfs = (u, p) => {
+    disc[u] = low[u] = timer++;
+    let skipped = false;
+    for (const v of adj[u]) {
+      if (v === p && !skipped) { skipped = true; continue; }
+      if (disc[v] < 0) { dfs(v, u); low[u] = Math.min(low[u], low[v]); if (low[v] > disc[u]) out.add(edgeKey(u, v)); }
+      else low[u] = Math.min(low[u], disc[v]);
+    }
+  };
+  for (let u = 0; u < V; u++) if (disc[u] < 0) dfs(u, -1);
+  return out;
+}
+// Głębokość pułapki: ile kroków dzieli węzeł od najbliższej pętli, po której można uciekać przed pościgiem.
+// 0 = węzeł leży na pętli. Pokój z jednymi drzwiami ma co najmniej 1.
+function trapDepths(V, adj, bset) {
+  const comp = new Int32Array(V).fill(-1), size = [];
+  for (let s = 0; s < V; s++) {
+    if (comp[s] >= 0) continue;
+    const id = size.length, q = [s]; comp[s] = id;
+    for (let h = 0; h < q.length; h++) for (const v of adj[q[h]]) if (comp[v] < 0 && !bset.has(edgeKey(q[h], v))) { comp[v] = id; q.push(v); }
+    size.push(q.length);
+  }
+  const d = new Int32Array(V).fill(-1), q = [];
+  for (let u = 0; u < V; u++) if (size[comp[u]] >= 2) { d[u] = 0; q.push(u); }
+  for (let h = 0; h < q.length; h++) for (const v of adj[q[h]]) if (d[v] < 0) { d[v] = d[q[h]] + 1; q.push(v); }
+  for (let u = 0; u < V; u++) if (d[u] < 0) d[u] = V; // brak jakiejkolwiek pętli
+  return d;
+}
+
 // ===== ALGORYTMY LABIRYNTU =====
 // Każdy dostaje kontekst M i wypełnia wszystkie wolne komórki (poza pokojami) drzewem korytarzy.
 const MAZES = {
@@ -279,7 +332,62 @@ function generate(P, seed) {
   }
   snap('Pętle');
 
-  // 7. Poszerzenia: prosty odcinek 2–4 komórek dostaje drugi pas od strony litej skały
+  // 7. Ucieczka: żadne miejsce nie może leżeć dalej niż P.maxTrap kroków od pętli,
+  // żeby potwór idący od wejścia nie zamknął gracza w ślepej kieszeni (dotyczy też pokoi z jednymi drzwiami)
+  if ((P.maxTrap != null && P.maxTrap < 99) || P.roomExits) {
+    if (P.maxTrap == null) P = { ...P, maxTrap: 99 };
+    const skip = new Set();
+    for (let it = 0; it < 150; it++) {
+      const g = navGraph(W, LW, LH, t, rid, rooms.length);
+      const dep = trapDepths(g.V, g.adj, bridgeSet(g.V, g.adj));
+      const starts = [];
+      let worst = -1;
+      // pokój z jednym wyjściem to najgorsza pułapka, więc przy P.roomExits pokoje muszą leżeć na pętli
+      const limit = n => n < rooms.length && P.roomExits !== false ? 0 : P.maxTrap;
+      for (let n = 0; n < g.V; n++) if (dep[n] > limit(n) && (worst < 0 || dep[n] - limit(n) > dep[worst] - limit(worst))) {
+        const c = n < rooms.length ? [rooms[n].i, rooms[n].j] : g.corCells[n - rooms.length];
+        if (!skip.has(c.join())) worst = n;
+      }
+      if (worst < 0) break;
+      for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) if (g.node[j * LW + i] === worst) starts.push([i, j]);
+      // odległości w grafie od tej kieszeni: nowe przejście ma prowadzić daleko, a nie tworzyć kółka 2×2
+      const gd = new Int32Array(g.V).fill(-1), gq = [worst]; gd[worst] = 0;
+      for (let h = 0; h < gq.length; h++) for (const v of g.adj[gq[h]]) if (gd[v] < 0) { gd[v] = gd[gq[h]] + 1; gq.push(v); }
+      // BFS przez litą skałę (maks. 4 komórki) do dowolnego innego wykutego miejsca
+      const prev = new Map(), q = [];
+      for (const [i, j] of starts) { prev.set(j * LW + i, -1); q.push([i, j, 0]); }
+      let best = null;
+      for (let h = 0; h < q.length; h++) {
+        const [i, j, len] = q[h];
+        for (const [dx, dy] of DIRS) {
+          const ni = i + dx, nj = j + dy, nk = nj * LW + ni;
+          if (!inL(ni, nj) || t[at(cx(i) + dx, cx(j) + dy)] || prev.has(nk)) continue;
+          if (carved(ni, nj)) {
+            const tn = g.node[nk];
+            if (tn === worst || gd[tn] < 4) continue;
+            const score = gd[tn] - 2 * len;
+            if (!best || score > best.score) best = { score, end: nk, from: j * LW + i };
+            continue;
+          }
+          if (len >= 4) continue;
+          prev.set(nk, j * LW + i); q.push([ni, nj, len + 1]);
+        }
+      }
+      if (!best) { skip.add((worst < rooms.length ? [rooms[worst].i, rooms[worst].j] : g.corCells[worst - rooms.length]).join()); continue; }
+      const path = [best.end];
+      for (let k = best.from; k >= 0; k = prev.get(k)) path.push(k);
+      for (let k = 0; k + 1 < path.length; k++) {
+        const a = path[k], b = path[k + 1], ai = a % LW, aj = (a / LW) | 0, bi = b % LW, bj = (b / LW) | 0;
+        if (!carved(ai, aj)) t[at(cx(ai), cx(aj))] = COR;
+        if (!carved(bi, bj)) t[at(cx(bi), cx(bj))] = COR;
+        const room = rid[at(cx(ai), cx(aj))] >= 0 || rid[at(cx(bi), cx(bj))] >= 0;
+        t[at((cx(ai) + cx(bi)) / 2, (cx(aj) + cx(bj)) / 2)] = room ? DOOR : LOOP;
+      }
+    }
+  }
+  snap('Ucieczka');
+
+  // 8. Poszerzenia: prosty odcinek 2–4 komórek dostaje drugi pas od strony litej skały
   const wc = [];
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) for (const [dx, dy] of [[1, 0], [0, 1]]) for (let L = 2; L <= 4; L++) {
     let ok = true;
@@ -351,20 +459,8 @@ function evaluate(G, P, history) {
   for (let k = 0; k < t.length; k++) if (t[k]) { walk++; if (first < 0) first = k; }
   const connected = walk > 0 && bfs(first % W, (first / W) | 0).n === walk;
 
-  // graf abstrakcyjny: pokój = 1 węzeł, komórka korytarza = 1 węzeł
-  const node = new Int32Array(LW * LH).fill(-1), corCells = [];
-  for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) {
-    const k = at(cx(i), cx(j));
-    if (!t[k]) continue;
-    if (rid[k] >= 0) node[j * LW + i] = rid[k]; else { node[j * LW + i] = R + corCells.length; corCells.push([i, j]); }
-  }
-  const V = R + corCells.length, adj = Array.from({ length: V }, () => []), edges = [];
-  for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) for (const [dx, dy] of [[1, 0], [0, 1]]) {
-    if (i + dx >= LW || j + dy >= LH) continue;
-    const a = node[j * LW + i], b = node[(j + dy) * LW + i + dx];
-    if (a < 0 || b < 0 || a === b || !t[at(cx(i) + dx, cx(j) + dy)]) continue;
-    adj[a].push(b); adj[b].push(a); edges.push([a, b, cx(i) + dx, cx(j) + dy]);
-  }
+  // graf nawigacyjny: pokój = 1 węzeł, komórka korytarza = 1 węzeł
+  const { node, corCells, V, adj, edges } = navGraph(W, LW, LH, t, rid, R);
   const E = edges.length, degN = adj.map(a => a.length);
   const cycles = connected ? E - V + 1 : 0;
   const deadList = corCells.filter((_, k) => degN[R + k] === 1);
@@ -409,6 +505,12 @@ function evaluate(G, P, history) {
     core = Math.max(core, rc);
   }
   const coreFrac = R ? core / R : 0;
+  // pułapki: miejsca, z których jest tylko jedna droga do najbliższej pętli
+  const tdep = trapDepths(V, adj, bset);
+  let maxTrap = 0;
+  for (let u = 0; u < V; u++) maxTrap = Math.max(maxTrap, tdep[u]);
+  const trapCells = corCells.map(([i, j], k) => [i, j, tdep[R + k]]).filter(c => c[2] > 0);
+  const trapRooms = rooms.map((_, r) => [r, tdep[r]]).filter(c => c[1] > 0);
   // trasy między pokojami
   const centers = rooms.map(r => [Math.round((cx(r.i) + 2 * (r.i + r.w) - 1) / 2) | 1, Math.round((cx(r.j) + 2 * (r.j + r.h) - 1) / 2) | 1]);
   let tSum = 0, tN = 0, far = { d: -1 };
@@ -453,9 +555,9 @@ function evaluate(G, P, history) {
   for (const h of history || []) { const s = similarity(sig, h.sig); if (s > maxSim) { maxSim = s; simTo = h.seed; } }
 
   const M = [
-    { key: 'loops', name: 'Pętle na pokój', v: cycles / Math.max(1, R), lo: 0.5, hi: 1.5, soft: 0.8, w: 1.2, f: 2, hint: 'Alternatywne drogi: gracz może obejść przeciwnika i nie wraca tą samą trasą.' },
+    { key: 'loops', name: 'Pętle na pokój', v: cycles / Math.max(1, R), lo: 0.8, hi: 2.2, soft: 0.8, w: 1.2, f: 2, hint: 'Alternatywne drogi: gracz może obejść przeciwnika i nie wraca tą samą trasą.' },
     { key: 'dead', name: 'Ślepe zaułki na pokój', v: deadList.length / Math.max(1, R), lo: 0.2, hi: 1.0, soft: 1, w: 1, f: 2, hint: 'Kilka nagradza eksplorację (skrzynka, sekret); za dużo męczy cofaniem.' },
-    { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, lo: 0.5, hi: 0.85, soft: 0.35, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe): dobre miejsce na klucz, bossa lub skarb. Gdy jest ich za dużo, układ robi się liniowy.` },
+    { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, lo: 0.8, hi: 1, soft: 0.4, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe), więc łatwo tam utknąć w pościgu. Pokój za gardłem ma sens tylko celowo, np. dla bossa.` },
     { key: 'tort', name: 'Krętość tras', v: tort, lo: 1.3, hi: 2.2, soft: 0.6, w: 1.2, f: 2, hint: 'Długość drogi między pokojami ÷ odległość w linii prostej. 1 = nudno prosto, >2.5 = frustrujący labirynt.' },
     { key: 'str', name: 'Najdłuższa prosta', v: straight.len / Math.max(W, H), lo: 0, hi: 0.35, soft: 0.3, w: 1, f: 0, pct: true, hint: 'Długi prosty korytarz to martwy czas i otwarta linia strzału.' },
     { key: 'junc', name: 'Skrzyżowania', v: junctions / nc, lo: 0.12, hi: 0.32, soft: 0.15, w: 0.8, f: 0, pct: true, hint: 'Udział komórek korytarza z 3–4 wyjściami: punkty decyzji gracza.' },
@@ -463,12 +565,13 @@ function evaluate(G, P, history) {
     { key: 'door', name: 'Drzwi na pokój', v: doorAvg, lo: 1.5, hi: 2.6, soft: 1, w: 1, f: 2, hint: `Pokój z 1 drzwiami to ślepa kieszeń; jest ich ${oneDoor} z ${R}.` },
     { key: 'var', name: 'Różnorodność pokoi', v: enabled ? types.size / enabled : 0, lo: 1, hi: 1, soft: 0.7, w: 0.6, f: 0, pct: true, hint: `Użyte typy: ${[...types].join(', ') || 'brak'}.` },
     { key: 'ent', name: 'Różnorodność kształtów', v: entropy, lo: 0.65, hi: 1, soft: 0.35, w: 0.8, f: 0, pct: true, hint: 'Entropia typów komórek (prosta, zakręt, T, krzyż, zaułek). Niska = monotonne powtórzenia.' },
+    { key: 'trap', name: 'Pułapki', v: Math.min(maxTrap, 99), lo: 0, hi: 2, soft: 4, w: 1.5, f: 0, hint: maxTrap === 0 ? 'Każde miejsce leży na pętli: przed pościgiem zawsze da się uciec drugą stroną.' : `Najgłębsza ślepa kieszeń: ${maxTrap >= V ? 'cała mapa (brak pętli)' : maxTrap + ' kroków od najbliższej pętli'}. Pokoi-kieszeni: ${trapRooms.length}. Potwór idący od wejścia zamyka tam gracza (czerwone na mapie).` },
     { key: 'uniq', name: 'Unikalność', v: 1 - maxSim, lo: 0.45, hi: 1, soft: 0.35, w: 1.2, f: 0, pct: true, hint: history && history.length ? `Najbardziej podobny do zaakceptowanego #${simTo} (${Math.round(maxSim * 100)}%, z odbiciami lustrzanymi).` : 'Brak historii, więc nie ma z czym porównać.' },
   ];
   let sw = 0, ss = 0;
   for (const m of M) { m.s = band(m.v, m.lo, m.hi, m.soft); sw += m.w; ss += m.s * m.w; }
   const score = connected ? Math.round(ss / sw * 100) : 0;
   return { connected, score, M, maxSim, simTo, sig, seed: G.seed, cycles, V, E, wideTiles,
-    deadList, chokes, straight, far, rooms: R, doors };
+    deadList, chokes, straight, far, rooms: R, doors, trapCells, trapRooms, maxTrap };
 }
 if (typeof module !== 'undefined') module.exports = { MAZES, generate, evaluate, similarity, ROCK, COR, ROOM, DOOR, WIDE, LOOP };

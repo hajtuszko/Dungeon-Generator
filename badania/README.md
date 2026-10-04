@@ -52,6 +52,8 @@ Jamis Buck (*Mazes for Programmers*, 2015) opisuje, że każdy algorytm labirynt
 
 ## 2. Pomiary
 
+Pomiary 2.1–2.6 wykonano oceniaczem w wersji sprzed zmiany progów z punktu 2.7 (plik `wyniki.md` pochodzi z tamtej wersji).
+
 Do `core.js` dodałem rejestr `MAZES` z 7 algorytmami (parametr `P.maze`): `backtracker` (domyślny, wyniki identyczne jak przed zmianą), `huntAndKill`, `growingMix` (Growing Tree 75% najnowsza / 25% losowa komórka), `wilson`, `kruskal`, `prim` i `binaryTree`. Dodałem też tryb pętli `P.loopMode = 'shortcut'`. Wszystkie liczby pochodzą z [`wyniki.md`](wyniki.md): mapa 41×41, 300 ziaren na wariant.
 
 ### 2.1. Faktura czystego labiryntu (tabela A)
@@ -114,6 +116,26 @@ Wnioski: (a) pokoje trzeba rozstawiać z odstępem 1 *lub więcej* komórek albo
 - **Pętle liczone, nie oceniane**: pętla 2-kafelkowa obok innej pętli liczy się tak samo jak skrót przez pół mapy.
 - **Unikalność tylko przestrzenna**: dwa układy o różnym rozkładzie pokoi, ale tej samej strukturze grafu (np. liniowy korytarz z odnogami), uchodzą za różne.
 
+### 2.7. Ucieczka przed pościgiem
+
+Wymaganie z gameplayu: potwór nie może zwabić gracza w ślepy zaułek. Miejsce jest bezpieczne, jeśli leży na pętli, bo wtedy przed pościgiem da się uciec drugą stroną. Dla każdego węzła grafu liczę **głębokość pułapki**: odległość do najbliższego węzła leżącego na cyklu (komponent 2-spójny krawędziowo, czyli bez mostów). Pokój z jednym wyjściem ma głębokość co najmniej 1.
+
+Nowy etap generatora **„Ucieczka”** (`P.maxTrap`, `P.roomExits`):
+
+1. policz głębokość pułapki dla każdego węzła,
+2. weź najgłębszy węzeł ponad limit (pokoje przy `roomExits` mają limit 0),
+3. z niego przebij przejście przez maks. 4 komórki litej skały do miejsca, które jest w grafie jak najdalej (min. 4 węzły, żeby nie powstało kółko 2×2),
+4. powtarzaj, aż nic nie przekracza limitu.
+
+Wyniki na 150 ziarnach (backtracker, pętle-skróty):
+
+| | Najgłębsza kieszeń (med. / maks.) | Pokoje-pułapki na mapę | Drzwi na pokój | Czas |
+|---|---|---|---|---|
+| bez ucieczki | 7 / 35 kroków | 5.8 | 1.8 | 5.8 ms |
+| limit 2, pokoje na pętli | 1 / 2 kroki | **0** | 2.2 | 4.6 ms |
+
+Ta reguła kłóci się z dwoma progami starego oceniacza: „pętle na pokój ≤ 1.5” i „pokoje w pętlach ≤ 85%” (część pokoi miała celowo leżeć za wąskim gardłem). Przy grze z pościgiem to błędne założenie, więc progi zmieniłem na 0.8–2.2 pętli na pokój i 80–100% pokoi w pętlach. Doszła cecha **Pułapki** (cel ≤ 2 kroki, waga 1.5). Po zmianie średnia ocena wynosi 79.7 bez ucieczki i 95.1 z ucieczką. Pokój za wąskim gardłem (np. boss) ma sens tylko jako świadoma decyzja w grafie misji, a nie przypadek.
+
 ---
 
 ## 3. Projekt nowego algorytmu: „Cykle i role”
@@ -130,7 +152,7 @@ Roboczy pomysł łączący wnioski z części 1 i 2. Wszystkie etapy są do zwer
 3. **Osadzenie na siatce.** Pokoje rozstawiane tak, żeby odległości na siatce odpowiadały odległościom w grafie misji (np. relaksacja siłowa na komórkach logicznych). Minimalny odstęp 2 komórki, żeby nie powstawały wąskie proste przesmyki.
 4. **Korytarze ścieżki krytycznej.** Krawędzie grafu misji prowadzone A* po komórkach logicznych, z kosztem za długie proste i losowym szumem. Daje to kontrolowaną krętość zamiast przypadkowej.
 5. **Dzielnice o różnej fakturze.** Wolne obszary wypełniane labiryntem, ale z różnym algorytmem w różnych częściach mapy (np. `growingMix` przy centrum, `prim` w strefie piwnic). Gracz rozpoznaje, gdzie jest, po samym charakterze korytarzy.
-6. **Pętle-skróty.** Otwierane według odległości w grafie, jak w eksperymencie 2.4, z limitem na liczbę i minimalnym zyskiem.
+6. **Pętle-skróty i ucieczka.** Otwierane według odległości w grafie, jak w eksperymentach 2.4 i 2.7. Żadne miejsce nie leży dalej niż 2 kroki od pętli, a wyjątki (pokój bossa za jednym wejściem) wynikają z grafu misji.
 7. **Zaułki z nagrodą.** Każdy pozostały zaułek dostaje rolę (skrzynia, sekret, punkt widokowy) albo jest zasypany.
 8. **Poszerzenia z sensem.** Przed pokojem bossa, na skrzyżowaniach przy centrum (punkty orientacyjne), a nie losowo.
 
@@ -157,6 +179,7 @@ Nowe cechy, które da się policzyć dopiero, gdy znamy start, cel i role:
 - [x] Pomiar wpływu pętli i zaułków
 - [x] Eksperyment: pętle-skróty kontra losowe (wynik: +4 pkt dla backtrackera)
 - [x] Diagnoza długich prostych
+- [x] Reguła ucieczki: brak ślepych kieszeni głębszych niż limit i pokoi z jednym wyjściem
 - [ ] Miara linii wzroku zamiast najdłuższej prostej, mniej nasycone progi w oceniaczu
 - [ ] Odstęp między pokojami 2 komórki i ponowny pomiar długich prostych
 - [ ] Prototyp etapów 1–4 (graf misji → rozstawienie pokoi → korytarze A*)
