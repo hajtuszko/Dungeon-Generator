@@ -136,6 +136,25 @@ Wyniki na 150 ziarnach (backtracker, pętle-skróty):
 
 Ta reguła kłóci się z dwoma progami starego oceniacza: „pętle na pokój ≤ 1.5” i „pokoje w pętlach ≤ 85%” (część pokoi miała celowo leżeć za wąskim gardłem). Przy grze z pościgiem to błędne założenie, więc progi zmieniłem na 0.8–2.2 pętli na pokój i 80–100% pokoi w pętlach. Doszła cecha **Pułapki** (cel ≤ 2 kroki, waga 1.5). Po zmianie średnia ocena wynosi 79.7 bez ucieczki i 95.1 z ucieczką. Pokój za wąskim gardłem (np. boss) ma sens tylko jako świadoma decyzja w grafie misji, a nie przypadek.
 
+### 2.8. Więcej skrzyżowań
+
+Wymaganie z gameplayu: nie można długo iść jednym korytarzem bez żadnego wyboru. Nowa cecha **Korytarz bez wyboru** mierzy najdłuższy ciąg komórek korytarza o dokładnie dwóch wyjściach między punktami decyzji (rozwidlenie, pokój, zaułek). Cel ≤ 6 komórek, waga 1.3.
+
+Nowy etap **„Skrzyżowania”** (`P.maxRun`): bierze najdłuższy odcinek ponad limit i w jego środku przebija odnogę (maks. 3 komórki skały) do miejsca odległego w grafie o co najmniej 4 węzły. Powtarza, aż żaden odcinek nie przekracza limitu.
+
+Wyniki na 120 ziarnach (pętle-skróty, ucieczka 2, pokoje na pętli):
+
+| Algorytm | Limit | Najdłuższy odcinek (med. / maks.) | Udział skrzyżowań | Śr. ocena |
+|---|---|---|---|---|
+| backtracker | brak | 14 / 25 komórek | 19% | 87.7 |
+| backtracker | 8 | 8 / 8 | 22% | 93.3 |
+| backtracker | **5** | **5 / 6** | **26%** | **94.7** |
+| backtracker | 4 | 4 / 6 | 30% | 93.3 |
+| growingMix | brak | 11 / 19 | 23% | — |
+| growingMix | 5 | 5 / 6 | 27% | — |
+
+Więcej skrzyżowań oznacza więcej pętli, więc górny próg pętli na pokój podniosłem z 2.2 do 3.5, a cel udziału skrzyżowań z 12–32% na 15–45%. Limit 5 komórek (ok. 10 kafli) wypada najlepiej. Przy 4 korytarze zaczynają się zlewać w siatkę i krętość spada poniżej celu.
+
 ---
 
 ## 3. Projekt nowego algorytmu: „Cykle i role”
@@ -179,6 +198,7 @@ Nowe cechy, które da się policzyć dopiero, gdy znamy start, cel i role:
 - [x] Pomiar wpływu pętli i zaułków
 - [x] Eksperyment: pętle-skróty kontra losowe (wynik: +4 pkt dla backtrackera)
 - [x] Diagnoza długich prostych
+- [x] Etap „Skrzyżowania”: maks. 5 komórek korytarza bez wyboru
 - [x] Reguła ucieczki: brak ślepych kieszeni głębszych niż limit i pokoi z jednym wyjściem
 - [ ] Miara linii wzroku zamiast najdłuższej prostej, mniej nasycone progi w oceniaczu
 - [ ] Odstęp między pokojami 2 komórki i ponowny pomiar długich prostych

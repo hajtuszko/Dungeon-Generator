@@ -22,7 +22,8 @@ Mapa ma nieparzyste wymiary w kaflach (`W × H`). Komórki logiczne leżą na ka
 5. **Zaułki**: przebicie części ślepych zaułków do sąsiada (najchętniej innego zaułka).
 6. **Pętle** między korytarzami, z pominięciem ciasnych pętli 2×2.
 7. **Ucieczka** (gdy podano `maxTrap` lub `roomExits`): przebija przejścia z najgłębszych ślepych kieszeni, żeby potwór nie mógł zamknąć gracza w zaułku ani w pokoju z jednym wyjściem.
-8. **Poszerzenia**: drugi pas wzdłuż prostego odcinka 2–4 komórek, tylko od strony litej skały.
+8. **Skrzyżowania** (gdy podano `maxRun`): w środku zbyt długiego odcinka bez wyboru przebija odnogę w odległe miejsce grafu.
+9. **Poszerzenia**: drugi pas wzdłuż prostego odcinka 2–4 komórek, tylko od strony litej skały.
 
 Parametry `P`:
 
@@ -38,7 +39,8 @@ Parametry `P`:
   maze: 'backtracker',     // opcjonalnie: huntAndKill, growingMix, wilson, kruskal, prim, binaryTree
   loopMode: 'random',      // opcjonalnie 'shortcut': pętle tam, gdzie najbardziej skracają drogę
   maxTrap: 2,              // opcjonalnie: maks. odległość (w krokach) od pętli; 99 = bez limitu
-  roomExits: true }        // opcjonalnie: każdy pokój musi leżeć na pętli (min. 2 wyjścia)
+  roomExits: true,        // opcjonalnie: każdy pokój musi leżeć na pętli (min. 2 wyjścia)
+  maxRun: 5 }              // opcjonalnie: maks. liczba komórek korytarza bez rozwidlenia; 99 = bez limitu
 ```
 
 `ocena_ukladu.html` ma wbudowaną kopię `core.js` (po zmianie `core.js` trzeba ją odświeżyć) oraz panel porównujący wszystkie algorytmy labiryntu na tym samym ziarnie.

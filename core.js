@@ -60,6 +60,26 @@ function trapDepths(V, adj, bset) {
   return d;
 }
 
+// Odcinki bez wyboru: ciągi komórek korytarza o dokładnie 2 wyjściach między punktami decyzji
+// (skrzyżowanie, pokój, zaułek). Zwraca listy węzłów każdego odcinka.
+function corridorChains(g, R) {
+  const deg = g.adj.map(a => a.length), isMid = n => n >= R && deg[n] === 2;
+  const seen = new Uint8Array(g.V), chains = [];
+  for (let n = 0; n < g.V; n++) {
+    if (!isMid(n) || seen[n]) continue;
+    // idź w obie strony od n aż do punktu decyzji
+    const chain = [n]; seen[n] = 1;
+    for (const dir of g.adj[n]) {
+      let prev = n, cur = dir;
+      const side = [];
+      while (isMid(cur) && !seen[cur]) { seen[cur] = 1; side.push(cur); const nx = g.adj[cur][0] === prev ? g.adj[cur][1] : g.adj[cur][0]; prev = cur; cur = nx; }
+      if (dir === g.adj[n][0]) chain.unshift(...side.reverse()); else chain.push(...side);
+    }
+    chains.push(chain);
+  }
+  return chains;
+}
+
 // ===== ALGORYTMY LABIRYNTU =====
 // Każdy dostaje kontekst M i wypełnia wszystkie wolne komórki (poza pokojami) drzewem korytarzy.
 const MAZES = {
@@ -332,6 +352,43 @@ function generate(P, seed) {
   }
   snap('Pętle');
 
+  // Przebija przejście z komórek startowych (przez maks. maxRock komórek litej skały) do wykutego miejsca,
+  // które w grafie leży co najmniej minGraph węzłów dalej; wybiera cel najdalszy w grafie przy krótkiej drodze przez skałę.
+  function openRoute(g, starts, fromNode, minGraph, maxRock) {
+    const gd = new Int32Array(g.V).fill(-1), gq = [fromNode]; gd[fromNode] = 0;
+    for (let h = 0; h < gq.length; h++) for (const v of g.adj[gq[h]]) if (gd[v] < 0) { gd[v] = gd[gq[h]] + 1; gq.push(v); }
+    const prev = new Map(), q = [];
+    for (const [i, j] of starts) { prev.set(j * LW + i, -1); q.push([i, j, 0]); }
+    let best = null;
+    for (let h = 0; h < q.length; h++) {
+      const [i, j, len] = q[h];
+      for (const [dx, dy] of DIRS) {
+        const ni = i + dx, nj = j + dy, nk = nj * LW + ni;
+        if (!inL(ni, nj) || t[at(cx(i) + dx, cx(j) + dy)] || prev.has(nk)) continue;
+        if (carved(ni, nj)) {
+          const tn = g.node[nk];
+          if (tn === fromNode || gd[tn] < minGraph) continue;
+          const score = gd[tn] - 2 * len;
+          if (!best || score > best.score) best = { score, end: nk, from: j * LW + i };
+          continue;
+        }
+        if (len >= maxRock) continue;
+        prev.set(nk, j * LW + i); q.push([ni, nj, len + 1]);
+      }
+    }
+    if (!best) return false;
+    const path = [best.end];
+    for (let k = best.from; k >= 0; k = prev.get(k)) path.push(k);
+    for (let k = 0; k + 1 < path.length; k++) {
+      const a = path[k], b = path[k + 1], ai = a % LW, aj = (a / LW) | 0, bi = b % LW, bj = (b / LW) | 0;
+      if (!carved(ai, aj)) t[at(cx(ai), cx(aj))] = COR;
+      if (!carved(bi, bj)) t[at(cx(bi), cx(bj))] = COR;
+      const room = rid[at(cx(ai), cx(aj))] >= 0 || rid[at(cx(bi), cx(bj))] >= 0;
+      t[at((cx(ai) + cx(bi)) / 2, (cx(aj) + cx(bj)) / 2)] = room ? DOOR : LOOP;
+    }
+    return true;
+  }
+
   // 7. Ucieczka: żadne miejsce nie może leżeć dalej niż P.maxTrap kroków od pętli,
   // żeby potwór idący od wejścia nie zamknął gracza w ślepej kieszeni (dotyczy też pokoi z jednymi drzwiami)
   if ((P.maxTrap != null && P.maxTrap < 99) || P.roomExits) {
@@ -350,44 +407,34 @@ function generate(P, seed) {
       }
       if (worst < 0) break;
       for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) if (g.node[j * LW + i] === worst) starts.push([i, j]);
-      // odległości w grafie od tej kieszeni: nowe przejście ma prowadzić daleko, a nie tworzyć kółka 2×2
-      const gd = new Int32Array(g.V).fill(-1), gq = [worst]; gd[worst] = 0;
-      for (let h = 0; h < gq.length; h++) for (const v of g.adj[gq[h]]) if (gd[v] < 0) { gd[v] = gd[gq[h]] + 1; gq.push(v); }
-      // BFS przez litą skałę (maks. 4 komórki) do dowolnego innego wykutego miejsca
-      const prev = new Map(), q = [];
-      for (const [i, j] of starts) { prev.set(j * LW + i, -1); q.push([i, j, 0]); }
-      let best = null;
-      for (let h = 0; h < q.length; h++) {
-        const [i, j, len] = q[h];
-        for (const [dx, dy] of DIRS) {
-          const ni = i + dx, nj = j + dy, nk = nj * LW + ni;
-          if (!inL(ni, nj) || t[at(cx(i) + dx, cx(j) + dy)] || prev.has(nk)) continue;
-          if (carved(ni, nj)) {
-            const tn = g.node[nk];
-            if (tn === worst || gd[tn] < 4) continue;
-            const score = gd[tn] - 2 * len;
-            if (!best || score > best.score) best = { score, end: nk, from: j * LW + i };
-            continue;
-          }
-          if (len >= 4) continue;
-          prev.set(nk, j * LW + i); q.push([ni, nj, len + 1]);
-        }
-      }
-      if (!best) { skip.add((worst < rooms.length ? [rooms[worst].i, rooms[worst].j] : g.corCells[worst - rooms.length]).join()); continue; }
-      const path = [best.end];
-      for (let k = best.from; k >= 0; k = prev.get(k)) path.push(k);
-      for (let k = 0; k + 1 < path.length; k++) {
-        const a = path[k], b = path[k + 1], ai = a % LW, aj = (a / LW) | 0, bi = b % LW, bj = (b / LW) | 0;
-        if (!carved(ai, aj)) t[at(cx(ai), cx(aj))] = COR;
-        if (!carved(bi, bj)) t[at(cx(bi), cx(bj))] = COR;
-        const room = rid[at(cx(ai), cx(aj))] >= 0 || rid[at(cx(bi), cx(bj))] >= 0;
-        t[at((cx(ai) + cx(bi)) / 2, (cx(aj) + cx(bj)) / 2)] = room ? DOOR : LOOP;
-      }
+      if (!openRoute(g, starts, worst, 4, 4)) skip.add((worst < rooms.length ? [rooms[worst].i, rooms[worst].j] : g.corCells[worst - rooms.length]).join());
     }
   }
   snap('Ucieczka');
 
-  // 8. Poszerzenia: prosty odcinek 2–4 komórek dostaje drugi pas od strony litej skały
+  // 8. Skrzyżowania: żaden odcinek korytarza bez wyboru nie może być dłuższy niż P.maxRun komórek.
+  // W środku za długiego odcinka powstaje rozwidlenie prowadzące w odległe miejsce grafu.
+  if (P.maxRun != null && P.maxRun < 99) {
+    const skip = new Set();
+    for (let it = 0; it < 200; it++) {
+      const g = navGraph(W, LW, LH, t, rid, rooms.length);
+      const chains = corridorChains(g, rooms.length).filter(c => c.length > P.maxRun && !skip.has(c[0] + ':' + c.length));
+      if (!chains.length) break;
+      const chain = chains.reduce((a, b) => (b.length > a.length ? b : a));
+      // kandydaci od środka odcinka na zewnątrz
+      const mid = (chain.length - 1) / 2;
+      const order = chain.map((n, k) => [n, Math.abs(k - mid)]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+      let done = false;
+      for (const n of order) {
+        if (Math.abs(chain.indexOf(n) - mid) > chain.length / 2 - 1) break; // nie przy samych końcach
+        if (openRoute(g, [g.corCells[n - rooms.length]], n, 4, 3)) { done = true; break; }
+      }
+      if (!done) skip.add(chain[0] + ':' + chain.length);
+    }
+  }
+  snap('Skrzyżowania');
+
+  // 9. Poszerzenia: prosty odcinek 2–4 komórek dostaje drugi pas od strony litej skały
   const wc = [];
   for (let j = 0; j < LH; j++) for (let i = 0; i < LW; i++) for (const [dx, dy] of [[1, 0], [0, 1]]) for (let L = 2; L <= 4; L++) {
     let ok = true;
@@ -505,6 +552,11 @@ function evaluate(G, P, history) {
     core = Math.max(core, rc);
   }
   const coreFrac = R ? core / R : 0;
+  // odcinki bez wyboru
+  const chains = corridorChains({ V, adj }, R);
+  const longest = chains.reduce((a, c) => (c.length > a.length ? c : a), []);
+  const runAvg = chains.length ? chains.reduce((a, c) => a + c.length, 0) / chains.length : 0;
+  const runCells = longest.map(n => corCells[n - R]);
   // pułapki: miejsca, z których jest tylko jedna droga do najbliższej pętli
   const tdep = trapDepths(V, adj, bset);
   let maxTrap = 0;
@@ -555,16 +607,17 @@ function evaluate(G, P, history) {
   for (const h of history || []) { const s = similarity(sig, h.sig); if (s > maxSim) { maxSim = s; simTo = h.seed; } }
 
   const M = [
-    { key: 'loops', name: 'Pętle na pokój', v: cycles / Math.max(1, R), lo: 0.8, hi: 2.2, soft: 0.8, w: 1.2, f: 2, hint: 'Alternatywne drogi: gracz może obejść przeciwnika i nie wraca tą samą trasą.' },
+    { key: 'loops', name: 'Pętle na pokój', v: cycles / Math.max(1, R), lo: 0.8, hi: 3.5, soft: 1, w: 1.2, f: 2, hint: 'Alternatywne drogi: gracz może obejść przeciwnika i nie wraca tą samą trasą.' },
     { key: 'dead', name: 'Ślepe zaułki na pokój', v: deadList.length / Math.max(1, R), lo: 0.2, hi: 1.0, soft: 1, w: 1, f: 2, hint: 'Kilka nagradza eksplorację (skrzynka, sekret); za dużo męczy cofaniem.' },
     { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, lo: 0.8, hi: 1, soft: 0.4, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe), więc łatwo tam utknąć w pościgu. Pokój za gardłem ma sens tylko celowo, np. dla bossa.` },
     { key: 'tort', name: 'Krętość tras', v: tort, lo: 1.3, hi: 2.2, soft: 0.6, w: 1.2, f: 2, hint: 'Długość drogi między pokojami ÷ odległość w linii prostej. 1 = nudno prosto, >2.5 = frustrujący labirynt.' },
     { key: 'str', name: 'Najdłuższa prosta', v: straight.len / Math.max(W, H), lo: 0, hi: 0.35, soft: 0.3, w: 1, f: 0, pct: true, hint: 'Długi prosty korytarz to martwy czas i otwarta linia strzału.' },
-    { key: 'junc', name: 'Skrzyżowania', v: junctions / nc, lo: 0.12, hi: 0.32, soft: 0.15, w: 0.8, f: 0, pct: true, hint: 'Udział komórek korytarza z 3–4 wyjściami: punkty decyzji gracza.' },
+    { key: 'junc', name: 'Skrzyżowania', v: junctions / nc, lo: 0.15, hi: 0.45, soft: 0.15, w: 0.8, f: 0, pct: true, hint: 'Udział komórek korytarza z 3–4 wyjściami: punkty decyzji gracza.' },
     { key: 'cov', name: 'Rozłożenie pokoi', v: coverage, lo: 0.75, hi: 1, soft: 0.45, w: 1, f: 0, pct: true, hint: 'Ile sektorów mapy 3×3 ma pokój. Skupione pokoje zostawiają puste połacie korytarzy.' },
     { key: 'door', name: 'Drzwi na pokój', v: doorAvg, lo: 1.5, hi: 2.6, soft: 1, w: 1, f: 2, hint: `Pokój z 1 drzwiami to ślepa kieszeń; jest ich ${oneDoor} z ${R}.` },
     { key: 'var', name: 'Różnorodność pokoi', v: enabled ? types.size / enabled : 0, lo: 1, hi: 1, soft: 0.7, w: 0.6, f: 0, pct: true, hint: `Użyte typy: ${[...types].join(', ') || 'brak'}.` },
     { key: 'ent', name: 'Różnorodność kształtów', v: entropy, lo: 0.65, hi: 1, soft: 0.35, w: 0.8, f: 0, pct: true, hint: 'Entropia typów komórek (prosta, zakręt, T, krzyż, zaułek). Niska = monotonne powtórzenia.' },
+    { key: 'run', name: 'Korytarz bez wyboru', v: longest.length, lo: 0, hi: 6, soft: 8, w: 1.3, f: 0, hint: `Najdłuższy odcinek, na którym gracz nie ma żadnego rozwidlenia: ${longest.length} komórek (${2 * longest.length} kafli). Średnio ${runAvg.toFixed(1)} komórki między decyzjami.` },
     { key: 'trap', name: 'Pułapki', v: Math.min(maxTrap, 99), lo: 0, hi: 2, soft: 4, w: 1.5, f: 0, hint: maxTrap === 0 ? 'Każde miejsce leży na pętli: przed pościgiem zawsze da się uciec drugą stroną.' : `Najgłębsza ślepa kieszeń: ${maxTrap >= V ? 'cała mapa (brak pętli)' : maxTrap + ' kroków od najbliższej pętli'}. Pokoi-kieszeni: ${trapRooms.length}. Potwór idący od wejścia zamyka tam gracza (czerwone na mapie).` },
     { key: 'uniq', name: 'Unikalność', v: 1 - maxSim, lo: 0.45, hi: 1, soft: 0.35, w: 1.2, f: 0, pct: true, hint: history && history.length ? `Najbardziej podobny do zaakceptowanego #${simTo} (${Math.round(maxSim * 100)}%, z odbiciami lustrzanymi).` : 'Brak historii, więc nie ma z czym porównać.' },
   ];
@@ -572,6 +625,6 @@ function evaluate(G, P, history) {
   for (const m of M) { m.s = band(m.v, m.lo, m.hi, m.soft); sw += m.w; ss += m.s * m.w; }
   const score = connected ? Math.round(ss / sw * 100) : 0;
   return { connected, score, M, maxSim, simTo, sig, seed: G.seed, cycles, V, E, wideTiles,
-    deadList, chokes, straight, far, rooms: R, doors, trapCells, trapRooms, maxTrap };
+    deadList, chokes, straight, far, rooms: R, doors, trapCells, trapRooms, maxTrap, runCells };
 }
 if (typeof module !== 'undefined') module.exports = { MAZES, generate, evaluate, similarity, ROCK, COR, ROOM, DOOR, WIDE, LOOP };
