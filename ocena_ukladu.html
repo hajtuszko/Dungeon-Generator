@@ -96,6 +96,11 @@ canvas#map { display: block; max-width: 100%; height: auto; border-radius: 4px; 
 .f.checks { flex-direction: row; flex-wrap: wrap; gap: 6px 14px; grid-column: 1 / -1; color: var(--muted); }
 .f.checks label { display: flex; gap: 6px; align-items: center; }
 .f.checks input { accent-color: var(--accent); }
+.sizebox { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+.sizebox input { width: 72px; }
+.sizebox[hidden], .note[hidden] { display: none; }
+.note { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.m.na .n, .m.na .v { color: var(--muted); }
 .tablebox { overflow-x: auto; max-height: 300px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; font: 13px var(--f-mono); font-variant-numeric: tabular-nums; }
 th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -107,7 +112,7 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
 .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
 .thumb { display: flex; flex-direction: column; gap: 4px; cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 6px; background: var(--bg); }
 .thumb.cur { border-color: var(--accent); }
-.thumb canvas { width: 100%; height: auto; display: block; border-radius: 3px; }
+.thumb canvas { width: 100%; height: auto; display: block; border-radius: 3px; image-rendering: pixelated; }
 .thumb span { font: 12px var(--f-mono); color: var(--muted); }
 .empty { font-size: 13.5px; color: var(--muted); }
 .how { columns: 2 320px; column-gap: 28px; font-size: 14px; color: var(--muted); }
@@ -121,7 +126,7 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
   <header>
     <div class="eyebrow">Generator wnętrz · Recursive Backtracker + ocena grywalności</div>
     <h1>Ocena układu wnętrz</h1>
-    <p class="lede">Każdy układ powstaje w 7 etapach: pokoje 3×3, 3×4 i 4×2, korytarze z Recursive Backtrackera na komórkach nieparzystych, drzwi, przerzedzenie, usuwanie zaułków, pętle i poszerzenia. Potem drugi algorytm mierzy 11 cech ważnych dla poruszania się gracza i porównuje układ z już zaakceptowanymi. Wyszukiwarka przegląda kolejne ziarna i bierze najlepszy układ, który przejdzie oba progi.</p>
+    <p class="lede">Każdy układ powstaje w 7 etapach: pokoje 3×3, 3×4 i 4×2 (na małych mapach także 2×2), korytarze z Recursive Backtrackera na komórkach nieparzystych, drzwi, przerzedzenie, usuwanie zaułków, pętle i poszerzenia. Potem drugi algorytm mierzy 11 cech ważnych dla poruszania się gracza i porównuje układ z już zaakceptowanymi. Wyszukiwarka przegląda kolejne ziarna i bierze najlepszy układ, który przejdzie oba progi.</p>
   </header>
 
   <div class="grid2">
@@ -170,9 +175,15 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
       <h2>Parametry</h2>
       <div class="params">
         <div class="f"><div class="top"><label for="size">Rozmiar mapy (kafle)</label></div>
-          <select id="size"><option value="31x31">31 × 31</option><option value="41x41" selected>41 × 41</option><option value="51x41">51 × 41</option><option value="61x45">61 × 45</option></select></div>
+          <select id="size">
+            <optgroup label="Małe"><option value="11x11">11 × 11</option><option value="13x13">13 × 13</option><option value="15x15">15 × 15</option><option value="16x16">16 × 16</option><option value="17x17">17 × 17</option><option value="21x21">21 × 21</option><option value="25x25">25 × 25</option></optgroup>
+            <optgroup label="Duże"><option value="31x31">31 × 31</option><option value="41x41" selected>41 × 41</option><option value="51x41">51 × 41</option><option value="61x45">61 × 45</option></optgroup>
+            <option value="custom">własny…</option></select>
+          <div class="sizebox" id="customSize" hidden><input type="number" id="cw" min="9" max="99" value="16" aria-label="Szerokość mapy w kaflach"> × <input type="number" id="chh" min="9" max="99" value="16" aria-label="Wysokość mapy w kaflach"> <span>(9–99)</span></div>
+          <div class="note" id="sizeNote" hidden></div></div>
         <div class="f"><div class="top"><label for="tries">Prób na wyszukiwanie</label><output id="triesV"></output></div><input type="range" id="tries" min="5" max="60" value="20"></div>
         <div class="f checks"><span>Pokoje (w komórkach):</span>
+          <label><input type="checkbox" id="s22"> 2×2</label>
           <label><input type="checkbox" id="s33" checked> 3×3</label>
           <label><input type="checkbox" id="s34" checked> 3×4 / 4×3</label>
           <label><input type="checkbox" id="s42" checked> 4×2 / 2×4</label></div>
@@ -208,6 +219,8 @@ td.ok { color: var(--good); } td.no { color: var(--bad); }
       <p><b>Pasma docelowe.</b> Każda cecha ma przedział, w którym dostaje 100%. Poza nim wynik spada liniowo do zera. Ocena to średnia ważona. Przedziały dobrałem po zmierzeniu 300 losowych układów i warto je stroić pod konkretną grę.</p>
       <p><b>Unikalność.</b> Mapa dzielona jest na siatkę 6×6 sektorów, a w każdym liczony jest udział pokoi i pól chodliwych. Odcisk porównywany jest z każdym zaakceptowanym układem także po odbiciach lustrzanych, bo odbita mapa gra się tak samo. Dwa losowe układy mają zwykle 10–35% podobieństwa, a prawie-duplikat ok. 100%.</p>
       <p><b>Rozmiary pokoi</b> liczone są w komórkach logicznych siatki nieparzystej. Pokój 3×4 zajmuje 5×7 kafli, bo między komórkami są kafle ścian, które w pokoju też są wykute.</p>
+      <p><b>Małe mapy</b> (od 9×9 kafli). Do 21 kafli na krótszym boku włącza się pokój 2×2, bo większe pokoje mieszczą się tylko pojedynczo. Przy 1 pokoju krętość tras i pokoje w pętlach nie liczą się do oceny (n/d), różnorodność pokoi wymaga najwyżej tylu typów, ile jest pokoi, a najdłuższa prosta może mieć co najmniej 10 kafli. Na mapach od 31 kafli przy domyślnych ustawieniach generator i ocena dają te same wyniki co wcześniej.</p>
+      <p><b>Parzyste wymiary</b>, np. 16×16. Komórki leżą na kaflach o nieparzystych współrzędnych, więc przy parzystym boku ostatnia kolumna lub ostatni rząd zostaje dodatkową ścianą. Mapa 16×16 ma układ jak 15×15 z podwójną ścianą z prawej i u dołu.</p>
       <p><b>Poszerzenia</b> powstają tylko obok litej skały, którą zostawia przerzedzenie. Przy przerzedzeniu 0% nie ma na nie miejsca. Pas jest dobudowany wzdłuż prostego odcinka 2–4 komórek i nie łączy się z niczym innym.</p>
     </div>
   </section>
@@ -225,7 +238,8 @@ function mulberry32(a) {
 
 function generate(P, seed) {
   const rng = mulberry32(seed);
-  const W = P.W, H = P.H, LW = (W - 1) / 2, LH = (H - 1) / 2;
+  // siatka komórek wymaga nieparzystej liczby kafli; przy parzystym wymiarze ostatni rząd/kolumna zostaje skałą
+  const W = P.W, H = P.H, LW = (W - 1) >> 1, LH = (H - 1) >> 1;
   const t = new Uint8Array(W * H);
   const rid = new Int16Array(W * H).fill(-1);
   const at = (x, y) => y * W + x;
@@ -247,6 +261,7 @@ function generate(P, seed) {
   if (P.s33) sizes.push([3, 3]);
   if (P.s34) sizes.push([3, 4], [4, 3]);
   if (P.s42) sizes.push([4, 2], [2, 4]);
+  if (P.s22) sizes.push([2, 2]);
   const rooms = [];
   if (sizes.length) {
     const avg = sizes.reduce((a, [w, h]) => a + w * h, 0) / sizes.length;
@@ -365,7 +380,7 @@ function generate(P, seed) {
     let ok = true;
     for (let off = 1; off <= 2 && ok; off++) for (let k = -1; k <= (x1 - x0) + (y1 - y0) + 1 && ok; k++) {
       const x = x0 + k * dx + px * off, y = y0 + k * dy + py * off;
-      ok = x >= 0 && y >= 0 && x < W && y < H && t[at(x, y)] === ROCK;
+      ok = x >= 0 && y >= 0 && x <= 2 * LW && y <= 2 * LH && t[at(x, y)] === ROCK; // nie w dodatkowy pas parzystej mapy
     }
     if (!ok) continue;
     for (let k = 0; k <= (x1 - x0) + (y1 - y0); k++) t[at(x0 + k * dx + px, y0 + k * dy + py)] = WIDE;
@@ -377,6 +392,9 @@ function generate(P, seed) {
 }
 
 // ===== OCENA =====
+// najdłuższa prosta: na małych mapach limit w kaflach zamiast 35% boku (od 29 kafli w górę bez zmian)
+const STR_MIN = 10;
+const NA_HINT = 'Za mało pokoi, więc ta cecha nie liczy się do oceny. ';
 const band = (v, lo, hi, soft) => v >= lo && v <= hi ? 1 : Math.max(0, 1 - (v < lo ? lo - v : v - hi) / soft);
 
 // odcisk przestrzenny: siatka 6×6 sektorów, w każdym udział pokoi i udział pól chodliwych
@@ -516,7 +534,10 @@ function evaluate(G, P, history) {
   const doorAvg = R ? doors.reduce((a, b) => a + b, 0) / R : 0;
   const oneDoor = doors.filter(d => d === 1).length;
   const types = new Set(rooms.map(r => Math.min(r.w, r.h) + 'x' + Math.max(r.w, r.h)));
-  const enabled = (P.s33 ? 1 : 0) + (P.s34 ? 1 : 0) + (P.s42 ? 1 : 0);
+  // włączone typy, które mieszczą się na mapie; przy małej liczbie pokoi nie da się użyć więcej typów niż pokoi
+  const fits = (a, b) => (a <= LW && b <= LH) || (b <= LW && a <= LH);
+  const enabled = [[P.s33, 3, 3], [P.s34, 3, 4], [P.s42, 2, 4], [P.s22, 2, 2]].filter(([on, a, b]) => on && fits(a, b)).length;
+  const varDen = Math.min(enabled, R);
   let wideTiles = 0; for (let k = 0; k < t.length; k++) if (t[k] === WIDE) wideTiles++;
 
   const sig = signature(G);
@@ -526,18 +547,19 @@ function evaluate(G, P, history) {
   const M = [
     { key: 'loops', name: 'Pętle na pokój', v: cycles / Math.max(1, R), lo: 0.5, hi: 1.5, soft: 0.8, w: 1.2, f: 2, hint: 'Alternatywne drogi: gracz może obejść przeciwnika i nie wraca tą samą trasą.' },
     { key: 'dead', name: 'Ślepe zaułki na pokój', v: deadList.length / Math.max(1, R), lo: 0.2, hi: 1.0, soft: 1, w: 1, f: 2, hint: 'Kilka nagradza eksplorację (skrzynka, sekret); za dużo męczy cofaniem.' },
-    { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, lo: 0.5, hi: 0.85, soft: 0.35, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe): dobre miejsce na klucz, bossa lub skarb. Gdy jest ich za dużo, układ robi się liniowy.` },
-    { key: 'tort', name: 'Krętość tras', v: tort, lo: 1.3, hi: 2.2, soft: 0.6, w: 1.2, f: 2, hint: 'Długość drogi między pokojami ÷ odległość w linii prostej. 1 = nudno prosto, >2.5 = frustrujący labirynt.' },
-    { key: 'str', name: 'Najdłuższa prosta', v: straight.len / Math.max(W, H), lo: 0, hi: 0.35, soft: 0.3, w: 1, f: 0, pct: true, hint: 'Długi prosty korytarz to martwy czas i otwarta linia strzału.' },
+    { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, na: R < 2, lo: 0.5, hi: 0.85, soft: 0.35, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe): dobre miejsce na klucz, bossa lub skarb. Gdy jest ich za dużo, układ robi się liniowy.` },
+    { key: 'tort', name: 'Krętość tras', v: tort, na: tN === 0, lo: 1.3, hi: 2.2, soft: 0.6, w: 1.2, f: 2, hint: 'Długość drogi między pokojami ÷ odległość w linii prostej. 1 = nudno prosto, >2.5 = frustrujący labirynt.' },
+    { key: 'str', name: 'Najdłuższa prosta', v: straight.len / Math.max(W, H), lo: 0, hi: Math.max(0.35, STR_MIN / Math.max(W, H)), soft: 0.3, w: 1, f: 0, pct: true, hint: `Długi prosty korytarz to martwy czas i otwarta linia strzału. Na małych mapach dopuszczalne jest ${STR_MIN} kafli.` },
     { key: 'junc', name: 'Skrzyżowania', v: junctions / nc, lo: 0.12, hi: 0.32, soft: 0.15, w: 0.8, f: 0, pct: true, hint: 'Udział komórek korytarza z 3–4 wyjściami: punkty decyzji gracza.' },
     { key: 'cov', name: 'Rozłożenie pokoi', v: coverage, lo: 0.75, hi: 1, soft: 0.45, w: 1, f: 0, pct: true, hint: 'Ile sektorów mapy 3×3 ma pokój. Skupione pokoje zostawiają puste połacie korytarzy.' },
     { key: 'door', name: 'Drzwi na pokój', v: doorAvg, lo: 1.5, hi: 2.6, soft: 1, w: 1, f: 2, hint: `Pokój z 1 drzwiami to ślepa kieszeń; jest ich ${oneDoor} z ${R}.` },
-    { key: 'var', name: 'Różnorodność pokoi', v: enabled ? types.size / enabled : 0, lo: 1, hi: 1, soft: 0.7, w: 0.6, f: 0, pct: true, hint: `Użyte typy: ${[...types].join(', ') || 'brak'}.` },
+    { key: 'var', name: 'Różnorodność pokoi', v: varDen ? types.size / varDen : 0, lo: 1, hi: 1, soft: 0.7, w: 0.6, f: 0, pct: true, hint: `Użyte typy: ${[...types].join(', ') || 'brak'}.` },
     { key: 'ent', name: 'Różnorodność kształtów', v: entropy, lo: 0.65, hi: 1, soft: 0.35, w: 0.8, f: 0, pct: true, hint: 'Entropia typów komórek (prosta, zakręt, T, krzyż, zaułek). Niska = monotonne powtórzenia.' },
-    { key: 'uniq', name: 'Unikalność', v: 1 - maxSim, lo: 0.45, hi: 1, soft: 0.35, w: 1.2, f: 0, pct: true, hint: history && history.length ? `Najbardziej podobny do zaakceptowanego #${simTo} (${Math.round(maxSim * 100)}%, z odbiciami lustrzanymi).` : 'Brak historii, więc nie ma z czym porównać.' },
+    { key: 'uniq', name: 'Unikalność', v: 1 - maxSim, lo: 0.45, hi: 1, soft: 0.35, w: 1.2, f: 0, pct: true, hint: !history || !history.length ? 'Brak historii, więc nie ma z czym porównać.' : simTo === null ? 'Żaden zaakceptowany układ nie jest podobny (0%, z odbiciami lustrzanymi).' : `Najbardziej podobny do zaakceptowanego #${simTo} (${Math.round(maxSim * 100)}%, z odbiciami lustrzanymi).` },
   ];
   let sw = 0, ss = 0;
-  for (const m of M) { m.s = band(m.v, m.lo, m.hi, m.soft); sw += m.w; ss += m.s * m.w; }
+  // cecha bez sensu przy tej liczbie pokoi (na) nie wchodzi do średniej
+  for (const m of M) { m.s = band(m.v, m.lo, m.hi, m.soft); if (m.na) { m.hint = NA_HINT + m.hint; continue; } sw += m.w; ss += m.s * m.w; }
   const score = connected ? Math.round(ss / sw * 100) : 0;
   return { connected, score, M, maxSim, simTo, sig, seed: G.seed, cycles, V, E, wideTiles,
     deadList, chokes, straight, far, rooms: R, doors };
@@ -554,9 +576,28 @@ function evaluate(G, P, history) {
     const upd = () => { $(id + 'V').textContent = f($(id).value); };
     $(id).addEventListener('input', upd); upd();
   }
+  // rozmiar z listy albo własny (9–99 kafli, parzyste dozwolone)
+  function readSize() {
+    if ($('size').value !== 'custom') return $('size').value.split('x').map(Number);
+    const c = id => { const v = Math.max(9, Math.min(99, Math.round(Number($(id).value)) || 9)); $(id).value = v; return v; };
+    return [c('cw'), c('chh')];
+  }
+  // po przejściu między małą a dużą mapą przełącz pokój 2×2; opisz parzyste wymiary
+  const SMALL = 21; let wasSmall = null;
+  function onSize() {
+    $('customSize').hidden = $('size').value !== 'custom';
+    const [W, H] = readSize();
+    const small = Math.min(W, H) <= SMALL;
+    if (small !== wasSmall) { $('s22').checked = small; wasSmall = small; }
+    const side = [W % 2 ? '' : 'z prawej', H % 2 ? '' : 'u dołu'].filter(Boolean);
+    $('sizeNote').hidden = !side.length;
+    $('sizeNote').textContent = side.length ? `Parzysty wymiar: układ jak na ${W - 1 + W % 2} × ${H - 1 + H % 2}, z dodatkową ścianą ${side.join(' i ')}.` : '';
+  }
+  for (const id of ['size', 'cw', 'chh']) $(id).addEventListener('change', onSize);
+  onSize();
   function readP() {
-    const [W, H] = $('size').value.split('x').map(Number);
-    return { W, H, density: $('density').value / 100, s33: $('s33').checked, s34: $('s34').checked, s42: $('s42').checked,
+    const [W, H] = readSize();
+    return { W, H, density: $('density').value / 100, s22: $('s22').checked, s33: $('s33').checked, s34: $('s34').checked, s42: $('s42').checked,
       extraDoor: $('extraDoor').value / 100, sparse: $('sparse').value / 100, braid: $('braid').value / 100,
       loops: $('loops').value / 100, wide: Number($('wide').value) };
   }
@@ -625,7 +666,7 @@ function evaluate(G, P, history) {
     if (!cur) return;
     const { G, e } = cur;
     const box = cv.parentElement.clientWidth - 28 || 600;
-    const cell = Math.max(3, Math.floor(Math.min(box, 720) / G.W));
+    const cell = Math.max(3, Math.floor(Math.min(box, 720) / Math.max(G.W, G.H)));
     const dpr = window.devicePixelRatio || 1;
     cv.width = cell * G.W * dpr; cv.height = cell * G.H * dpr; cv.style.width = cell * G.W + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -653,7 +694,7 @@ function evaluate(G, P, history) {
     }
     if ($('oLbl').checked && cell >= 9) {
       ctx.fillStyle = css('--wall'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = `600 ${Math.max(9, Math.floor(cell * 0.9))}px "JetBrains Mono", monospace`;
+      ctx.font = `600 ${Math.max(9, Math.min(24, Math.floor(cell * 0.9)))}px "JetBrains Mono", monospace`;
       for (const r of G.rooms) {
         const x = (2 * r.i + 1 + 2 * (r.i + r.w) - 1) / 2 * cell + cell / 2, y = (2 * r.j + 1 + 2 * (r.j + r.h) - 1) / 2 * cell + cell / 2;
         ctx.fillText(`${r.w}×${r.h}`, x, y);
@@ -677,8 +718,14 @@ function evaluate(G, P, history) {
     for (const m of e.M) {
       const dmax = Math.max(m.hi + m.soft, m.v, m.pct ? 1 : 0) * 1.05;
       const pc = v => Math.max(0, Math.min(100, v / dmax * 100));
-      const col = m.s >= 0.999 ? 'var(--good)' : m.s >= 0.5 ? 'var(--warn)' : 'var(--bad)';
       const d = document.createElement('div'); d.className = 'm';
+      if (m.na) {
+        d.className = 'm na';
+        d.innerHTML = `<div class="n">${m.name}</div><div class="v">n/d</div><div class="bar"></div>
+        <div class="h">cel <span class="tg">${fmtT(m)}</span> · ${m.hint}</div>`;
+        box.appendChild(d); continue;
+      }
+      const col = m.s >= 0.999 ? 'var(--good)' : m.s >= 0.5 ? 'var(--warn)' : 'var(--bad)';
       d.innerHTML = `<div class="n">${m.name}</div><div class="v" style="color:${col}">${fmtV(m)} · ${Math.round(m.s * 100)}%</div>
         <div class="bar" title="cel ${fmtT(m)}"><i style="left:${pc(m.lo)}%;width:${Math.max(1.5, pc(m.hi) - pc(m.lo))}%"></i><b style="left:${pc(m.v)}%;background:${col}"></b></div>
         <div class="h">cel <span class="tg">${fmtT(m)}</span> · waga ${m.w}. ${m.hint}</div>`;

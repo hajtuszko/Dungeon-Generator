@@ -5,16 +5,16 @@ Narzędzia do generowania i oceny układów wnętrz (korytarze + pokoje) dla gry
 | Plik | Co to jest |
 |---|---|
 | `recursive_backtracker.html` | Animacja algorytmu Recursive Backtracker (DFS z powrotami) na komórkach o nieparzystych współrzędnych, z drugą fazą: usuwaniem ślepych zaułków i pętlami. |
-| `ocena_ukladu.html` | Generator wnętrz z pokojami 3×3, 3×4, 4×2 i poszerzeniami korytarzy, algorytmem oceny grywalności i kontrolą unikalności. |
+| `ocena_ukladu.html` | Generator wnętrz z pokojami 2×2, 3×3, 3×4, 4×2 i poszerzeniami korytarzy, algorytmem oceny grywalności i kontrolą unikalności. |
 | `core.js` | Sam generator i ocena, bez interfejsu. Działa w przeglądarce i w Node (`require('./core.js')`). |
 
 Oba pliki HTML otwiera się bezpośrednio w przeglądarce, bez serwera. `ocena_ukladu.html` ma wbudowaną kopię kodu z `core.js`.
 
 ## Generowanie (`generate(P, seed)`)
 
-Mapa ma nieparzyste wymiary w kaflach (`W × H`). Komórki logiczne leżą na kaflach o obu współrzędnych nieparzystych, a kafle między nimi to ściany. Rozmiary pokoi podane są w komórkach logicznych, więc pokój 3×4 zajmuje 5×7 kafli.
+Mapa ma wymiary `W × H` w kaflach, od 9×9 wzwyż (strona ma gotowe rozmiary od 11×11 do 61×45 i pole na własny). Komórki logiczne leżą na kaflach o obu współrzędnych nieparzystych, a kafle między nimi to ściany. Przy parzystym wymiarze ostatnia kolumna lub ostatni rząd zostaje dodatkową ścianą, więc mapa 16×16 ma układ jak 15×15 z grubszą ścianą z prawej i u dołu. Rozmiary pokoi podane są w komórkach logicznych, więc pokój 3×4 zajmuje 5×7 kafli.
 
-1. **Pokoje** 3×3, 3×4/4×3, 4×2/2×4 z odstępem min. 1 komórki.
+1. **Pokoje** 3×3, 3×4/4×3, 4×2/2×4 i opcjonalnie 2×2, z odstępem min. 1 komórki.
 2. **Labirynt DFS** w wolnych komórkach.
 3. **Drzwi**: drzewo rozpinające regionów (Kruskal) + losowe dodatkowe drzwi (maks. 3 na pokój, nigdy obok siebie).
 4. **Przerzedzenie**: zasypywanie ślepych końcówek, powstaje lita skała.
@@ -25,9 +25,10 @@ Mapa ma nieparzyste wymiary w kaflach (`W × H`). Komórki logiczne leżą na ka
 Parametry `P`:
 
 ```js
-{ W: 41, H: 41,            // wymiary w kaflach (nieparzyste)
+{ W: 41, H: 41,            // wymiary w kaflach (parzysty bok = dodatkowa ściana)
   density: 0.3,            // docelowy udział powierzchni pokoi
   s33: true, s34: true, s42: true, // dozwolone rozmiary pokoi
+  s22: false,              // pokój 2×2 (strona włącza go dla map do 21 kafli)
   extraDoor: 0.08,         // szansa na dodatkowe drzwi
   sparse: 0.25,            // jaka część korytarzy zostaje zasypana
   braid: 0.5,              // szansa usunięcia ślepego zaułka
@@ -56,6 +57,15 @@ Układ niespójny (BFS po kaflach nie dochodzi do wszystkich chodliwych pól) do
 | Unikalność | ≥ 45% | patrz niżej |
 
 Przedziały dobrano po zmierzeniu 300 losowych układów przy domyślnych parametrach. Warto je dostroić pod konkretną grę: są w tablicy `M` w funkcji `evaluate`.
+
+**Małe mapy.** Cechy, które nie mają sensu przy tej liczbie pokoi, dostają `na: true` i nie wchodzą do średniej: krętość tras bez pary pokoi i pokoje w pętlach przy 1 pokoju. Różnorodność pokoi wymaga najwyżej tylu typów, ile jest pokoi (liczą się tylko typy, które mieszczą się na mapie). Najdłuższa prosta może mieć 35% boku, ale nie mniej niż `STR_MIN` = 10 kafli. Na mapach od 31 kafli przy domyślnych parametrach generator i ocena dają te same wyniki co wcześniej.
+
+| Mapa (2×2 włączony) | Pokoje | Ocena ≥ 85 |
+|---|---|---|
+| 11×11 | 1 | ok. 50% |
+| 11×11, tylko 2×2 | 1–2 | ok. 68% |
+| 16×16 | 2 | ok. 67% |
+| 21×21 | 3 | ok. 38% |
 
 **Unikalność**: odcisk mapy to siatka 6×6 sektorów z udziałem pokoi i pól chodliwych w każdym. Porównanie z każdym układem z `history` (`{ seed, sig }`) uwzględnia odbicia lustrzane. Wynik jest przeskalowany tak, że dwa losowe układy mają ok. 10–35% podobieństwa, a prawie-duplikat ok. 100%.
 
