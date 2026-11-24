@@ -204,7 +204,8 @@ const MAZES = {
 
 function generate(P, seed) {
   const rng = mulberry32(seed);
-  const W = P.W, H = P.H, LW = (W - 1) / 2, LH = (H - 1) / 2;
+  // siatka komórek wymaga nieparzystej liczby kafli; przy parzystym wymiarze ostatni rząd/kolumna zostaje skałą
+  const W = P.W, H = P.H, LW = (W - 1) >> 1, LH = (H - 1) >> 1;
   const t = new Uint8Array(W * H);
   const rid = new Int16Array(W * H).fill(-1);
   const at = (x, y) => y * W + x;
@@ -226,6 +227,7 @@ function generate(P, seed) {
   if (P.s33) sizes.push([3, 3]);
   if (P.s34) sizes.push([3, 4], [4, 3]);
   if (P.s42) sizes.push([4, 2], [2, 4]);
+  if (P.s22) sizes.push([2, 2]);
   const rooms = [];
   if (sizes.length) {
     const avg = sizes.reduce((a, [w, h]) => a + w * h, 0) / sizes.length;
@@ -449,7 +451,7 @@ function generate(P, seed) {
     let ok = true;
     for (let off = 1; off <= 2 && ok; off++) for (let k = -1; k <= (x1 - x0) + (y1 - y0) + 1 && ok; k++) {
       const x = x0 + k * dx + px * off, y = y0 + k * dy + py * off;
-      ok = x >= 0 && y >= 0 && x < W && y < H && t[at(x, y)] === ROCK;
+      ok = x >= 0 && y >= 0 && x <= 2 * LW && y <= 2 * LH && t[at(x, y)] === ROCK; // nie w dodatkowy pas parzystej mapy
     }
     if (!ok) continue;
     for (let k = 0; k <= (x1 - x0) + (y1 - y0); k++) t[at(x0 + k * dx + px, y0 + k * dy + py)] = WIDE;
@@ -461,6 +463,9 @@ function generate(P, seed) {
 }
 
 // ===== OCENA =====
+// najdłuższa prosta: na małych mapach limit w kaflach zamiast 35% boku (od 29 kafli w górę bez zmian)
+const STR_MIN = 10;
+const NA_HINT = 'Za mało pokoi, więc ta cecha nie liczy się do oceny. ';
 const band = (v, lo, hi, soft) => v >= lo && v <= hi ? 1 : Math.max(0, 1 - (v < lo ? lo - v : v - hi) / soft);
 
 // odcisk przestrzenny: siatka 6×6 sektorów, w każdym udział pokoi i udział pól chodliwych
@@ -599,7 +604,10 @@ function evaluate(G, P, history) {
   const doorAvg = R ? doors.reduce((a, b) => a + b, 0) / R : 0;
   const oneDoor = doors.filter(d => d === 1).length;
   const types = new Set(rooms.map(r => Math.min(r.w, r.h) + 'x' + Math.max(r.w, r.h)));
-  const enabled = (P.s33 ? 1 : 0) + (P.s34 ? 1 : 0) + (P.s42 ? 1 : 0);
+  // włączone typy, które mieszczą się na mapie; przy małej liczbie pokoi nie da się użyć więcej typów niż pokoi
+  const fits = (a, b) => (a <= LW && b <= LH) || (b <= LW && a <= LH);
+  const enabled = [[P.s33, 3, 3], [P.s34, 3, 4], [P.s42, 2, 4], [P.s22, 2, 2]].filter(([on, a, b]) => on && fits(a, b)).length;
+  const varDen = Math.min(enabled, R);
   let wideTiles = 0; for (let k = 0; k < t.length; k++) if (t[k] === WIDE) wideTiles++;
 
   const sig = signature(G);
@@ -609,20 +617,21 @@ function evaluate(G, P, history) {
   const M = [
     { key: 'loops', name: 'Pętle na pokój', v: cycles / Math.max(1, R), lo: 0.8, hi: 3.5, soft: 1, w: 1.2, f: 2, hint: 'Alternatywne drogi: gracz może obejść przeciwnika i nie wraca tą samą trasą.' },
     { key: 'dead', name: 'Ślepe zaułki na pokój', v: deadList.length / Math.max(1, R), lo: 0.2, hi: 1.0, soft: 1, w: 1, f: 2, hint: 'Kilka nagradza eksplorację (skrzynka, sekret); za dużo męczy cofaniem.' },
-    { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, lo: 0.8, hi: 1, soft: 0.4, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe), więc łatwo tam utknąć w pościgu. Pokój za gardłem ma sens tylko celowo, np. dla bossa.` },
-    { key: 'tort', name: 'Krętość tras', v: tort, lo: 1.3, hi: 2.2, soft: 0.6, w: 1.2, f: 2, hint: 'Długość drogi między pokojami ÷ odległość w linii prostej. 1 = nudno prosto, >2.5 = frustrujący labirynt.' },
-    { key: 'str', name: 'Najdłuższa prosta', v: straight.len / Math.max(W, H), lo: 0, hi: 0.35, soft: 0.3, w: 1, f: 0, pct: true, hint: 'Długi prosty korytarz to martwy czas i otwarta linia strzału.' },
+    { key: 'lin', name: 'Pokoje w pętlach', v: coreFrac, na: R < 2, lo: 0.8, hi: 1, soft: 0.4, w: 1, f: 0, pct: true, hint: `Udział pokoi w największym obszarze z alternatywnymi drogami. Pozostałe ${R - core} leżą za wąskim gardłem (pomarańczowe), więc łatwo tam utknąć w pościgu. Pokój za gardłem ma sens tylko celowo, np. dla bossa.` },
+    { key: 'tort', name: 'Krętość tras', v: tort, na: tN === 0, lo: 1.3, hi: 2.2, soft: 0.6, w: 1.2, f: 2, hint: 'Długość drogi między pokojami ÷ odległość w linii prostej. 1 = nudno prosto, >2.5 = frustrujący labirynt.' },
+    { key: 'str', name: 'Najdłuższa prosta', v: straight.len / Math.max(W, H), lo: 0, hi: Math.max(0.35, STR_MIN / Math.max(W, H)), soft: 0.3, w: 1, f: 0, pct: true, hint: `Długi prosty korytarz to martwy czas i otwarta linia strzału. Na małych mapach dopuszczalne jest ${STR_MIN} kafli.` },
     { key: 'junc', name: 'Skrzyżowania', v: junctions / nc, lo: 0.15, hi: 0.45, soft: 0.15, w: 0.8, f: 0, pct: true, hint: 'Udział komórek korytarza z 3–4 wyjściami: punkty decyzji gracza.' },
     { key: 'cov', name: 'Rozłożenie pokoi', v: coverage, lo: 0.75, hi: 1, soft: 0.45, w: 1, f: 0, pct: true, hint: 'Ile sektorów mapy 3×3 ma pokój. Skupione pokoje zostawiają puste połacie korytarzy.' },
     { key: 'door', name: 'Drzwi na pokój', v: doorAvg, lo: 1.5, hi: 2.6, soft: 1, w: 1, f: 2, hint: `Pokój z 1 drzwiami to ślepa kieszeń; jest ich ${oneDoor} z ${R}.` },
-    { key: 'var', name: 'Różnorodność pokoi', v: enabled ? types.size / enabled : 0, lo: 1, hi: 1, soft: 0.7, w: 0.6, f: 0, pct: true, hint: `Użyte typy: ${[...types].join(', ') || 'brak'}.` },
+    { key: 'var', name: 'Różnorodność pokoi', v: varDen ? types.size / varDen : 0, lo: 1, hi: 1, soft: 0.7, w: 0.6, f: 0, pct: true, hint: `Użyte typy: ${[...types].join(', ') || 'brak'}.` },
     { key: 'ent', name: 'Różnorodność kształtów', v: entropy, lo: 0.65, hi: 1, soft: 0.35, w: 0.8, f: 0, pct: true, hint: 'Entropia typów komórek (prosta, zakręt, T, krzyż, zaułek). Niska = monotonne powtórzenia.' },
     { key: 'run', name: 'Korytarz bez wyboru', v: longest.length, lo: 0, hi: 6, soft: 8, w: 1.3, f: 0, hint: `Najdłuższy odcinek, na którym gracz nie ma żadnego rozwidlenia: ${longest.length} komórek (${2 * longest.length} kafli). Średnio ${runAvg.toFixed(1)} komórki między decyzjami.` },
     { key: 'trap', name: 'Pułapki', v: Math.min(maxTrap, 99), lo: 0, hi: 2, soft: 4, w: 1.5, f: 0, hint: maxTrap === 0 ? 'Każde miejsce leży na pętli: przed pościgiem zawsze da się uciec drugą stroną.' : `Najgłębsza ślepa kieszeń: ${maxTrap >= V ? 'cała mapa (brak pętli)' : maxTrap + ' kroków od najbliższej pętli'}. Pokoi-kieszeni: ${trapRooms.length}. Potwór idący od wejścia zamyka tam gracza (czerwone na mapie).` },
-    { key: 'uniq', name: 'Unikalność', v: 1 - maxSim, lo: 0.45, hi: 1, soft: 0.35, w: 1.2, f: 0, pct: true, hint: history && history.length ? `Najbardziej podobny do zaakceptowanego #${simTo} (${Math.round(maxSim * 100)}%, z odbiciami lustrzanymi).` : 'Brak historii, więc nie ma z czym porównać.' },
+    { key: 'uniq', name: 'Unikalność', v: 1 - maxSim, lo: 0.45, hi: 1, soft: 0.35, w: 1.2, f: 0, pct: true, hint: !history || !history.length ? 'Brak historii, więc nie ma z czym porównać.' : simTo === null ? 'Żaden zaakceptowany układ nie jest podobny (0%, z odbiciami lustrzanymi).' : `Najbardziej podobny do zaakceptowanego #${simTo} (${Math.round(maxSim * 100)}%, z odbiciami lustrzanymi).` },
   ];
   let sw = 0, ss = 0;
-  for (const m of M) { m.s = band(m.v, m.lo, m.hi, m.soft); sw += m.w; ss += m.s * m.w; }
+  // cecha bez sensu przy tej liczbie pokoi (na) nie wchodzi do średniej
+  for (const m of M) { m.s = band(m.v, m.lo, m.hi, m.soft); if (m.na) { m.hint = NA_HINT + m.hint; continue; } sw += m.w; ss += m.s * m.w; }
   const score = connected ? Math.round(ss / sw * 100) : 0;
   return { connected, score, M, maxSim, simTo, sig, seed: G.seed, cycles, V, E, wideTiles,
     deadList, chokes, straight, far, rooms: R, doors, trapCells, trapRooms, maxTrap, runCells };
